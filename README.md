@@ -78,18 +78,21 @@ following steps:
     become
 
     $$
-    \begin{align} a|\sigma^2 &\sim N({0}, \frac{\sigma^2n}{n_0}C_{aa}(\Phi^T\Phi)^{-1} )\\
-    \sigma^2 &\sim \text{Inv-Gamma}(\frac{v_0}{2}, \frac{s_0^2}{2}),
-    \end{align}
+    a|\sigma^2 \sim N({0}, \frac{\sigma^2n}{n_0}C_{aa}(\Phi^T\Phi)^{-1})
     $$
+
+    $$\sigma^2 \sim \text{Inv-Gamma}(\frac{v_0}{2}, \frac{s_0^2}{2}),$$
 
     where $\Phi$ is the $n\times N_\alpha$ matrix of basis functions and
     $n_0, v_0, s_0$ are user-defined hyperparameters. In this setting,
     the posterior distribution becomes
 
     $$
-    \begin{align} a | \sigma^2, y &\sim N( G_1 \hat{a} , \sigma^2 G_1(\Phi^T \Phi)^{-1}) \\
-    \sigma^2 | \bf y &\sim \text{Inv}-\text{Gamma}(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{a}^T \Phi^T\Phi\hat{a}}{2} )\end{align}
+    a | \sigma^2, y \sim N( G_1 \hat{a} , \sigma^2 G_1(\Phi^T \Phi)^{-1}) 
+    $$
+
+    $$
+    \sigma^2 | y \sim \text{Inv}-\text{Gamma}(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{a}^T \Phi^T\Phi\hat{a}}{2})
     $$
 
     where $\hat a = (\Phi^T \Phi)^{-1}\Phi^T {\bf y}$,
@@ -99,9 +102,11 @@ following steps:
     to evaluate KIC are now given by
 
     $$
-    \begin{align}{\hat{a}}_\text{map} &= G_1 \hat{a}\\
-    \hat{\sigma}^2_\text{map} &= \frac{s_0^2 + s^2 + G_2\hat{a}^T \Phi^T\Phi\hat{a}}{n+2+v_0 -p}
-    \end{align}
+    \hat{a}_\text{map} = G_1 \hat{a}
+    $$
+
+    $$
+    \hat{\sigma}^2_\text{map} = \frac{s_0^2 + s^2 + G_2\hat{a}^T \Phi^T\Phi\hat{a}}{n+2+v_0 -p}
     $$
 
     4.  We note that a major advantage of using the g-prior is the
