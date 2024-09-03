@@ -67,10 +67,10 @@ following steps:
     (40)-(44) in Shao et al., (2017) is unnecessary because the MAP’s
     can be found without needing iteration.
 
-2.  We also question the definition of ${\bf C}_{aa}$ given right after
+2.  We also question the definition of $C_{aa}$ given right after
     equation (39). We suggest the following definition,
-    $\sigma_\alpha^2 = \left(1 + q_\alpha(d_\alpha+q_\alpha-2) \right)^{-1}$
-    where $d_\alpha$ and $q_\alpha$ are the *degree* and *order*
+    $\sigma_\alpha^2 = (1 + q_\alpha(d_\alpha+q_\alpha-2))^{-1}$ where
+    $d_\alpha$ and $q_\alpha$ are the *degree* and *order*
     (respectively) implied by $\alpha$.
 
 3.  We propose a conjugate g-prior based approach (Zellner, 1986)
@@ -89,20 +89,20 @@ following steps:
     the posterior distribution becomes
 
     $$
-    \begin{aligned}{\bf a} | \sigma^2, {\bf y} &\sim N\left( G_1 \hat{\bf a} , \sigma^2 G_1\left(\Phi^\intercal \Phi\right)^{-1}\right) \\
-    \sigma^2 | \bf y &\sim \text{Inv}-\text{Gamma}\left(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{\bf a}^\intercal \Phi^\intercal\Phi\hat{\bf a}}{2}, \right)\end{aligned}
+    \begin{aligned}{a} | \sigma^2, {y} &\sim N\left( G_1 \hat{a} , \sigma^2 G_1\left(\Phi^\intercal \Phi\right)^{-1}\right) \\
+    \sigma^2 | \bf y &\sim \text{Inv}-\text{Gamma}\bigg(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{a}^\intercal \Phi^\intercal\Phi\hat{a}}{2} \bigg)\end{aligned}
     $$
 
     where
     $\hat a = \left(\Phi^\intercal \Phi\right)^{-1}\Phi^\intercal {\bf y}$,
     $s^2 = ({\bf y} - \Phi \hat{\bf a})^\intercal ({\bf y} - \Phi \hat{\bf a})$,
-    $G_1 = \left(\bf I + \frac{n_0}{n}{\bf C}_{aa}\right)^{-1}$ and
-    $G_2 = \left(\bf I + \frac{n}{n_0}{\bf C}_{aa}\right).$ The MAP
-    estimates used to evaluate KIC are now given by
+    $G_1 = \big(I + \frac{n_0}{n}{C}_{aa}\big)^{-1}$ and
+    $G_2 = \big(I + \frac{n}{n_0}{C}_{aa}\big).$ The MAP estimates used
+    to evaluate KIC are now given by
 
     $$
-    \begin{aligned}{\hat{\bf a}}_\text{map} &= G_1 \hat{\bf a}\\
-    \hat{\sigma}^2_\text{map} &= \frac{s_0^2 + s^2 + G_2\hat{\bf a}^\intercal \Phi^\intercal\Phi\hat{\bf a}}{n+2+v_0 -p}
+    \begin{aligned}{\hat{a}}_\text{map} &= G_1 \hat{a}\\
+    \hat{\sigma}^2_\text{map} &= \frac{s_0^2 + s^2 + G_2\hat{a}^\intercal \Phi^\intercal\Phi\hat{a}}{n+2+v_0 -p}
     \end{aligned}
     $$
 
