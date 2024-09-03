@@ -24,9 +24,11 @@ The user provides a $n\times p$ matrix of covariates (scaled to the unit
 hypercube) `X` and a $n$-vector `y` of the scalar response. The user
 also provides an initial value for the maximum polynomial degree $d$ and
 the maximum order of interaction $q$. There are
-$$|\mathcal A| =\sum_{i=1}^q\sum_{j=i+1}^d \binom{p}{i}\binom{j-1}{i-1} \stackrel{\triangle}{=} N_\alpha$$permissible
-basis functions to consider. The algorithm consists of the following
-steps:
+
+$$|\mathcal A| =\sum_{i=1}^q\sum_{j=i+1}^d \binom{p}{i}\binom{j-1}{i-1} \equiv N_\alpha$$
+
+permissible basis functions to consider. The algorithm consists of the
+following steps:
 
 1.  Compute the sample correlation $r_j$ between each basis column
     $\phi_j$ and $y$. Reorder the basis functions so that
