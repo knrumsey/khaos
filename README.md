@@ -119,6 +119,9 @@ To install this package, use
 devtools::install_github("knrumsey/khaos")
 ```
 
+The `README.Rmd` file can be knit locally for proper rendering of the
+equations. Will add a link here if I ever write a short paper for this.
+
 ### References
 
 Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse
