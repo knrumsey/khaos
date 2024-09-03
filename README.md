@@ -96,7 +96,7 @@ following steps:
     where
     $\hat a = \left(\Phi^\intercal \Phi\right)^{-1}\Phi^\intercal {\bf y}$,
     $s^2 = ({\bf y} - \Phi \hat{\bf a})^\intercal ({\bf y} - \Phi \hat{\bf a})$,
-    $G_1 = \big(I + \frac{n_0}{n}{C}_{aa}\big)^{-1}$ and
+    $G_1 = (I + \frac{n_0}{n}{C}_{aa})^{-1}$ and
     $G_2 = \big(I + \frac{n}{n_0}{C}_{aa}\big).$ The MAP estimates used
     to evaluate KIC are now given by
 

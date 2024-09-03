@@ -60,7 +60,7 @@ permissible basis functions to consider. The algorithm consists of the following
     \sigma^2 | \bf y &\sim \text{Inv}-\text{Gamma}\bigg(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{a}^\intercal \Phi^\intercal\Phi\hat{a}}{2} \bigg)\end{align}
     $$
 
-    where $\hat a = \left(\Phi^\intercal \Phi\right)^{-1}\Phi^\intercal {\bf y}$, $s^2 = ({\bf y} - \Phi \hat{\bf a})^\intercal ({\bf y} - \Phi \hat{\bf a})$, $G_1 = \big(I + \frac{n_0}{n}{C}_{aa}\big)^{-1}$ and $G_2 = \big(I + \frac{n}{n_0}{C}_{aa}\big).$ The MAP estimates used to evaluate KIC are now given by
+    where $\hat a = \left(\Phi^\intercal \Phi\right)^{-1}\Phi^\intercal {\bf y}$, $s^2 = ({\bf y} - \Phi \hat{\bf a})^\intercal ({\bf y} - \Phi \hat{\bf a})$, $G_1 = (I + \frac{n_0}{n}{C}_{aa})^{-1}$ and $G_2 = \big(I + \frac{n}{n_0}{C}_{aa}\big).$ The MAP estimates used to evaluate KIC are now given by
 
     $$
     \begin{align}{\hat{a}}_\text{map} &= G_1 \hat{a}\\
