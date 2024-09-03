@@ -78,10 +78,10 @@ following steps:
     become
 
     $$
-    \begin{aligned}
-    {\bf a}|\sigma^2 &\sim N\left({\bf 0}, \frac{\sigma^2n}{n_0}{\bf C}_{aa}\left(\Phi^T\Phi\right)^{-1} \right)\\
+    \begin{align}
+    {a}|\sigma^2 &\sim N\left({0}, \frac{\sigma^2n}{n_0}{C}_{aa}\left(\Phi^T\Phi\right)^{-1} \right)\\
     \sigma^2 &\sim \text{Inv-Gamma}\left(\frac{v_0}{2}, \frac{s_0^2}{2} \right),
-    \end{aligned}
+    \end{align}
     $$
 
     where $\Phi$ is the $n\times N_\alpha$ matrix of basis functions and
@@ -89,8 +89,8 @@ following steps:
     the posterior distribution becomes
 
     $$
-    \begin{aligned}{a} | \sigma^2, {y} &\sim N\left( G_1 \hat{a} , \sigma^2 G_1\left(\Phi^\intercal \Phi\right)^{-1}\right) \\
-    \sigma^2 | \bf y &\sim \text{Inv}-\text{Gamma}\bigg(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{a}^\intercal \Phi^\intercal\Phi\hat{a}}{2} \bigg)\end{aligned}
+    \begin{align}{a} | \sigma^2, {y} &\sim N\left( G_1 \hat{a} , \sigma^2 G_1\left(\Phi^\intercal \Phi\right)^{-1}\right) \\
+    \sigma^2 | \bf y &\sim \text{Inv}-\text{Gamma}\bigg(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{a}^\intercal \Phi^\intercal\Phi\hat{a}}{2} \bigg)\end{align}
     $$
 
     where
@@ -101,9 +101,9 @@ following steps:
     to evaluate KIC are now given by
 
     $$
-    \begin{aligned}{\hat{a}}_\text{map} &= G_1 \hat{a}\\
+    \begin{align}{\hat{a}}_\text{map} &= G_1 \hat{a}\\
     \hat{\sigma}^2_\text{map} &= \frac{s_0^2 + s^2 + G_2\hat{a}^\intercal \Phi^\intercal\Phi\hat{a}}{n+2+v_0 -p}
-    \end{aligned}
+    \end{align}
     $$
 
     4.  We note that a major advantage of using the g-prior is the
@@ -115,10 +115,8 @@ following steps:
 To install this package, use
 
 ``` r
-## NOTE: Not available yet, coming soon. 
 # install.packages("devtools")
-# devtools::install_github("knrumsey/khaos")
-devtools::install_gitlab("knrumsey/khaos")
+devtools::install_github("knrumsey/khaos")
 ```
 
 ### References
