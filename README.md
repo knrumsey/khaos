@@ -78,7 +78,7 @@ following steps:
     become
 
     $$
-    \begin{align} a|\sigma^2 &\sim N({0}, \frac{\sigma^2n}{n_0}{C}_{aa}(\Phi^T\Phi)^{-1} )\\
+    \begin{align} a|\sigma^2 &\sim N({0}, \frac{\sigma^2n}{n_0}C_{aa}(\Phi^T\Phi)^{-1} )\\
     \sigma^2 &\sim \text{Inv-Gamma}(\frac{v_0}{2}, \frac{s_0^2}{2}),
     \end{align}
     $$

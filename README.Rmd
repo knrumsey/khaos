@@ -47,7 +47,7 @@ permissible basis functions to consider. The algorithm consists of the following
 3.  We propose a conjugate g-prior based approach (Zellner, 1986) modified to account for ${\bf C}_{aa}$. The prior distributions become
 
     $$
-    \begin{align} a|\sigma^2 &\sim N({0}, \frac{\sigma^2n}{n_0}{C}_{aa}(\Phi^T\Phi)^{-1} )\\
+    \begin{align} a|\sigma^2 &\sim N({0}, \frac{\sigma^2n}{n_0}C_{aa}(\Phi^T\Phi)^{-1} )\\
     \sigma^2 &\sim \text{Inv-Gamma}(\frac{v_0}{2}, \frac{s_0^2}{2}),
     \end{align}
     $$
