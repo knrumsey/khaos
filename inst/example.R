@@ -6,7 +6,7 @@ n <- 500
 p <- 8
 X <- randomLHS(n, p)
 y <- apply(X, 1, duqling::piston, scale01=TRUE) + rnorm(n, 0, 0.1)
-fit <- khaos::bayes_chaos(X, y, max_basis=1e6, max_degree=8)
+fit <- khaos::sparse_khaos(X, y)
 plot(fit)
 
 # Predict on test set

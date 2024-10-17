@@ -4,51 +4,60 @@
 #'
 #' @param X A dataframe or matrix of predictors scaled to be between 0 and 1
 #' @param y a reponse vector
-#' @param max_degree_init The maximum polynomial degree (for initial model)
-#' @param max_order_init The maximum order of interaction (for initial model)
+#' @param degree Maximum polynomial degree parameters. c(Initial, Increment, Maximum)
+#' @param order Maximum order of interaction parameters. c(Initial, Increment, Maximum)
 #' @param prior A vector with prior values: n0 (strength of prior for coefficients), v0 (degrees of freedom for IG prior for sigma2), s0 (scale for IG prior for sigma2).
 #' @param lambda A parameter fed to the KIC calculations. Larger values will lead to sparser models.
 #' @param rho Basis functions are only kept if their square partial correlation coefficient is bigger than rho.
 #' @param regularize Logical. Should LASSO be used to pre-sparsify the library of basis functions?
-#' @param max_degree The maximum degree allowed (bounds the computation time).
 #' @param max_basis The maximum number of candidate basis functions to consider (bounds the computation time)
 #' @param verbose Logical. Should progress information be printed?
 #' @details Implements a modified version of the Bayesian sparse PCE method described by Shao et al. (2017).
+#' Degree (equivalently for order) is incremented by \code{degree[2]} if the current model contains any terms of maximal degree, and the process is started again from the top. Cannot be incremented above \code{degree[3]}.
+#' Fitting process terminates when either (i) max_basis is exceeded or (ii) current model fit does not contain any terms with degree and order not equal to the current maximum value.
 #' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
 #' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
-#' fit <- bayes_chaos(X, y)
+#' fit <- sparse_khaos(X, y)
 #' @export
-bayes_chaos <- function(X, y,
-                        max_degree_init=2, max_order_init=1,
+sparse_khaos <- function(X, y,
+                        degree=c(2,2,16), order=c(1,1,4),
                         prior=c(1, 1, 1), lambda=1, rho=0, regularize=TRUE,
-                        max_degree=12, max_basis=1e5,
+                        max_basis=3e5,
                         verbose=TRUE){
-  if(max(X) > 1 || min(X) < 0) warning("X matrix should have values between 0 and 1\n")
+  if(max(X) > 1 || min(X) < 0){
+    warning("X matrix should have values between 0 and 1.\n")
+  }
   if(!is.matrix(X)){
     X <- matrix(X, ncol=1)
   }
   n <- nrow(X)
   p <- ncol(X)
-  md <- max_degree_init
-  mo <- max_order_init
+
+  d_curr <- degree[1]
+  d_inc  <- degree[2]
+  d_max  <- degree[3]
+
+  o_curr <- order[1]
+  o_inc  <- order[2]
+  o_max  <- min(p, order[3])
 
   mu_y <- mean(y)
   sig_y <- sd(y)
   y <- (y - mu_y)/sig_y
 
-  res <- bayes_chaos_wrapper(X, y, n, p, md, mo, mu_y, sig_y, max_degree, max_basis, prior, lambda, rho, regularize, verbose)
+  res <- sparse_khaos_wrapper(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose)
   return(res)
 }
 
-bayes_chaos_wrapper <- function(X, y, n, p, md, mo, mu_y, sig_y, realmd, max_basis, prior, lambda, rho, regularize, verbose){
+sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose){
   # Create a list of p sequences from 1 to n
   if(verbose){
-    cat("Starting model with max degree = ", md, " and max order = ", mo, "\n", sep="")
+    cat("Starting model with max degree = ", d_curr, " and max order = ", o_curr, "\n", sep="")
   }
-  A_num <- A_size(p, md, mo)
+  A_num <- A_size(p, d_curr, o_curr)
   if(verbose) cat("\tFound ", A_num, " possible basis functions.\n", sep="")
   if(A_num > max_basis){
     stop("Too many basis functions. Increase max_basis or decrease initial degree/order. Consider dimension reduction approaches?")
@@ -65,7 +74,7 @@ bayes_chaos_wrapper <- function(X, y, n, p, md, mo, mu_y, sig_y, realmd, max_bas
       cat("\tComputing initial phi matrix\n")
     }
   }
-  A_set <- generate_A(p, md, mo)
+  A_set <- generate_A(p, d_curr, o_curr)
   A_deg <- apply(A_set, 1, sum)
   A_ord <- apply(A_set, 1, function(aa) sum(aa > 0))
   N_alpha <- nrow(A_set)
@@ -197,42 +206,48 @@ bayes_chaos_wrapper <- function(X, y, n, p, md, mo, mu_y, sig_y, realmd, max_bas
   }
 
   max_degree_curr     <- max(A_deg[1:(best$k-1)])
-  found_final_model   <- (max_degree_curr < md) #Note, Shao et al. suggest a +1 on the LHS of ineq.
-  next_degree_too_big <- (md + 2 > realmd)
-  next_basis_too_big  <- (A_size(p,md+2,mo+1) > max_basis)
-  if(any(c(found_final_model, next_degree_too_big, next_basis_too_big))){
-    if(next_degree_too_big) cat("Note: max_degree was reached.\n")
+  max_order_curr      <- max(A_ord[1:(best$k-1)])
+  at_capacity_degree  <- (max_degree_curr == d_curr) #Note, Shao et al. suggest a +1 on the LHS of ineq.
+  at_capacity_order   <- (max_order_curr == o_curr)
+  found_final_model   <- !(at_capacity_degree | at_capacity_order) # Neither degree nor order is at capacity
+  next_basis_too_big  <- (A_size(p, d_curr+d_inc, o_curr+o_inc) > max_basis)
+  over_max_deg_ord    <- (d_curr >= d_max) & (o_curr >= o_max)
+  if(found_final_model | next_basis_too_big | over_max_deg_ord){
+    #if(next_degree_too_big) cat("Note: max_degree was reached.\n")
     if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
+    if(over_max_deg_ord) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
     obj <- list(coeff=best$coeff, s2=best$s2, phi=phi[,1:best$k,drop=FALSE],
                 vars=A_set[1:best$k,,drop=FALSE],
                 mu_y=mu_y, sigma_y=sig_y, KIC=best$KIC, X=X, y=y*sig_y + mu_y,
                 BtB=best$BtB, BtBi=best$BtBi, prior=prior, G=best$G)
-    class(obj) <- "bayes_chaos"
+    class(obj) <- "sparse_khaos"
   }else{
-    res <- bayes_chaos_wrapper(X, y, n, p, md+2, mo+1, mu_y, sig_y, realmd,  max_basis, prior, lambda, rho, regularize, verbose)
+    d_next <- min(d_curr + d_inc, d_max)
+    o_next <- min(o_curr + o_inc, o_max)
+    res <- sparse_khaos_wrapper(X, y, n, p, d_next, d_inc, d_max, o_next, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose)
     return(res)
   }
   return(obj)
 }
 
-#' Predict Method for class bayes_chaos
+#' Predict Method for class sparse_khaos
 #'
-#' See \code{bayes_chaos()} for details.
+#' See \code{sparse_khaos()} for details.
 #'
-#' @param object An object returned by the \code{bayes_chaos()} function.
+#' @param object An object returned by the \code{sparse_khaos()} function.
 #' @param newdata A dataframe of the same dimension as the training data.
 #' @param samples How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.
-#' @details Predict function for bayes_chaos object.
+#' @details Predict function for sparse_khaos object.
 #' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
 #' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
-#' fit <- bayes_chaos(X, y)
+#' fit <- sparse_khaos(X, y)
 #' predict(fit)
 #'
 #' @export
-predict.bayes_chaos <- function(object, newdata=NULL, samples=1000){
+predict.sparse_khaos <- function(object, newdata=NULL, samples=1000){
   if(is.null(newdata)){
     newdata <- object$X
   }
@@ -272,22 +287,22 @@ predict.bayes_chaos <- function(object, newdata=NULL, samples=1000){
   return(pred)
 }
 
-#' Plot Method for class bayes_chaos
+#' Plot Method for class sparse_khaos
 #'
-#' See \code{bayes_chaos()} for details.
+#' See \code{sparse_khaos()} for details.
 #'
-#' @param x An object returned by the \code{bayes_chaos()} function.
+#' @param x An object returned by the \code{sparse_khaos()} function.
 #' @param ... additional arguments passed to \code{plot}
-#' @details Plot function for bayes_chaos object.
+#' @details Plot function for sparse_khaos object.
 #' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
 #' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
-#' fit <- bayes_chaos(X, y)
+#' fit <- sparse_khaos(X, y)
 #' plot(fit)
 #' @export
-plot.bayes_chaos <- function(x, ...){
+plot.sparse_khaos <- function(x, ...){
   pred <- predict(x, x$X, samples=1000)
   yhat <- colMeans(pred)
   plot(x$y, yhat, ...)
