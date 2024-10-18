@@ -48,12 +48,12 @@ adaptive_khaos <-function(X, y,
                           nburn=9000,
                           thin=1,
                           max_basis=1000,
-                          tau2=10^4,
+                          tau2=10^5,
                           g1=0,g2=0,
-                          h1=4,h2=20/length(y),
+                          h1=4,h2=40/length(y),
                           move_probs=rep(1/3, 3),
-                          coin_pars=list(function(j) j^(-3), 1, 2, 3),
-                          degree_penalty=1,
+                          coin_pars=list(function(j) 1/j, 1, 2, 3),
+                          degree_penalty=0,
                           verbose=TRUE
 ){
   n<-length(y)
@@ -76,13 +76,16 @@ adaptive_khaos <-function(X, y,
   nint<-dtot<-matrix(nrow=nmcmc,ncol=max_basis) # order of interaction J, and total degree, again filling will be ragged
   beta<-matrix(nrow=nmcmc,ncol=max_basis+1) # +1 for intercept, again filling will be ragged
   s2<-lam<-nbasis<-rep(NA,nmcmc) # error variance, poisson hyperprior, and number of basis functions
+  sum_sq <- rep(NA, nmcmc)
   eta_vec <- rep(0, p) # KR: count how many times each variable is added to the model
 
   # initialize
   nbasis[1]<-0
-  s2[1]<-1
-  lam[1]<-1
+  s2[1]<-var(y)
+  lam[1]<-h1/h2
   B.curr<-matrix(rep(1,n)) # matrix of current basis functions, so that yhat = B.curr %*% beta
+  BtB.curr <- crossprod(B.curr)
+  BtBi.curr <- solve(BtB.curr)
 
   Vinv.curr<-crossprod(B.curr)+1/tau2 # V^(-1) from DMS
   bhat<-solve(Vinv.curr)%*%t(B.curr)%*%y
@@ -150,59 +153,71 @@ adaptive_khaos <-function(X, y,
       # KR:
       if(nint.cand == 0) stop("Why is nint.cand zero? This shouldn't be possible.")
       basis.cand <- make_basis(vars.cand, degs.cand, X)
-      B.cand<-cbind(B.curr,basis.cand) # add the new basis function to the basis functions we already have
+      B.cand <- cbind(B.curr,basis.cand) # add the new basis function to the basis functions we already have
+      BtB.cand <- crossprod(B.cand)
+      BtBi.cand <- tryCatch({
+        solve(BtB.cand)
+      }, error = function(e) {
+        FALSE
+      })
 
-      Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1]+2)/tau2 # +2: one for intercept and one for birth
-      bhat.cand<-solve(Vinv.cand)%*%t(B.cand)%*%y
-      d.cand <- g2 + ssy - t(bhat.cand)%*%Vinv.cand%*%bhat.cand
+      if(!isFALSE(BtBi.cand)){ # Otherwise reject immediately
 
-      # calculate the log likelihood ratio (sort of) after integrating out beta and s2
-      llik.alpha <- (
-                    0.5*log(1/tau2) +
-                    (determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2) +
-                    (g1+n/2)*(log(d.curr) - log(d.cand))
-      )
+        Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1]+2)/tau2 # +2: one for intercept and one for birth
+        bhat.cand<-solve(Vinv.cand)%*%t(B.cand)%*%y
+        d.cand <- g2 + ssy - t(bhat.cand)%*%Vinv.cand%*%bhat.cand
 
-      # log prior ratio
-      lprior.alpha <- (
-                        log(lam[i-1]) - log(nbasis[i-1] + 1) # number of basis functions
-                      - log(A_total)                         # Prior over vars/degs
-                      + log(nbasis[i-1] + 1)                 # Account for ordering (a historical artifact?)
-      )
+        # calculate the log likelihood ratio (sort of) after integrating out beta and s2
+        llik.alpha <- (
+                      0.5*log(1/tau2) +
+                      (determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2) +
+                      (g1+n/2)*(log(d.curr) - log(d.cand))
+        )
 
-      # log proposal ratio (proposed to current via death) - (current to proposed)
-      lprop.alpha <- (
-           (log(move_probs[2])                    # probability of selection a death step
-           + log(1/(nbasis[i-1]+1)))              # probability that this basis function is selected to kill
-           - (log(move_probs[1])                  # probability of selecting a birth step
-           + log(d_probs[1+dtot.cand-nint.cand])  # KR: Probability of total degree
-           - lchoose(dtot.cand, nint.cand)        # KR: Probability of degree partition
-           + delayed_reject_term)                 # KR: probability of nint and vars based on coin flipping (delayed reject, see above)
-      )
+        # log prior ratio
+        lprior.alpha <- (
+                          log(lam[i-1]) - log(nbasis[i-1] + 1) # number of basis functions
+                        - log(A_total)                         # Prior over vars/degs
+                        + log(nbasis[i-1] + 1)                 # Account for ordering (a historical artifact?)
+        )
 
-      alpha <- llik.alpha + lprior.alpha + lprop.alpha
-      log(0.1) < alpha
+        # log proposal ratio (proposed to current via death) - (current to proposed)
+        lprop.alpha <- (
+             (log(move_probs[2])                    # probability of selection a death step
+             + log(1/(nbasis[i-1]+1)))              # probability that this basis function is selected to kill
+             - (log(move_probs[1])                  # probability of selecting a birth step
+             + log(d_probs[1+dtot.cand-nint.cand])  # KR: Probability of total degree
+             - lchoose(dtot.cand, nint.cand)        # KR: Probability of degree partition
+             + delayed_reject_term)                 # KR: probability of nint and vars based on coin flipping (delayed reject, see above)
+        )
+
+        alpha <- llik.alpha + lprior.alpha + lprop.alpha
 
 
-      if(log(runif(1))<alpha){ # accept, update current values
-        B.curr<-B.cand
-        bhat<-bhat.cand
-        Vinv.curr<-Vinv.cand
-        d.curr<-d.cand
-        nbasis[i]<-nbasis[i-1]+1
-        nint[i,nbasis[i]]<-nint.cand
-        dtot[i,nbasis[i]]<-dtot.cand
-        vars[i,nbasis[i],1:nint.cand]<-vars.cand
-        degs[i,nbasis[i],1:nint.cand]<-degs.cand
+        if(log(runif(1))<alpha){ # accept, update current values
+          B.curr<-B.cand
+          BtB.curr <- BtB.cand
+          BtBi.curr <- BtBi.cand
+          bhat<-bhat.cand
+          Vinv.curr<-Vinv.cand
+          d.curr<-d.cand
+          nbasis[i]<-nbasis[i-1]+1
+          nint[i,nbasis[i]]<-nint.cand
+          dtot[i,nbasis[i]]<-dtot.cand
+          vars[i,nbasis[i],1:nint.cand]<-vars.cand
+          degs[i,nbasis[i],1:nint.cand]<-degs.cand
 
-        eta_vec[vars.cand] <- eta_vec[vars.cand] + 1
-        count_accept[1] <- count_accept[1] + 1
+          eta_vec[vars.cand] <- eta_vec[vars.cand] + 1
+          count_accept[1] <- count_accept[1] + 1
+        }
       }
       count_propose[1] <- count_propose[1] + 1
 
     } else if(move.type=='death'){
       tokill<-sample(nbasis[i-1],1) # which basis function we will delete
       B.cand<-B.curr[,-(tokill+1)]  # + 1 to skip the intercept
+      BtB.cand <- crossprod(B.cand)
+      BtBi.cand <-solve(BtB.cand)   # There really shouldn't be any issues here, no need for try catch
 
       Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1])/tau2
       bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
@@ -273,6 +288,8 @@ adaptive_khaos <-function(X, y,
 
       if(log(runif(1))<alpha){ # accept, update
         B.curr<-B.cand
+        BtB.curr <- BtB.cand
+        BtBi.curr <- BtBi.cand
         bhat<-bhat.cand
         Vinv.curr<-Vinv.cand
         d.curr<-d.cand
@@ -297,7 +314,7 @@ adaptive_khaos <-function(X, y,
       # Adapt which mutation should get used.
       mutate_eps <- 0.1 # hard coded
       success_rates <- count_accept[3:4]/(0.01 + count_propose[3:4])
-      mutate_prob <- mutate_eps + (1 - 2*mutate_eps) * pnorm(-diff(qnorm(1e-6 + success_rates)))
+      mutate_prob <- mutate_eps + (1 - 2*mutate_eps) * pnorm(-diff(pmin(5,pmax(-5,qnorm(success_rates)))))
       mutate_type <- rbinom(1, 1, mutate_prob)
 
       # MUTATION TYPE 1: Re-sample the degrees
@@ -320,35 +337,45 @@ adaptive_khaos <-function(X, y,
         basis <- make_basis(vars.curr, degs.cand, X)
         B.cand <- B.curr
         B.cand[,tochange+1] <- basis # replace with our new basis function (+1 for intercept)
+        BtB.cand <- crossprod(B.cand)
+        BtBi.cand <- tryCatch({
+          solve(BtB.cand)
+        }, error = function(e) {
+          FALSE
+        })
 
-        Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1]+1)/tau2
-        bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
-        d.cand <- g2 + ssy - crossprod(bhat.cand,Vinv.cand%*%bhat.cand)
+        if(!isFALSE(BtBi.cand)){ #Otherwise reject immediately
+          Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1]+1)/tau2
+          bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
+          d.cand <- g2 + ssy - crossprod(bhat.cand,Vinv.cand%*%bhat.cand)
 
-        # Compute acceptance ratio
-        # Assume that "interaction" between the two mutation types is negligible
-        llik.alpha <- determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2 +
-                      (g1+n/2)*(log(d.curr) - log(d.cand))
+          # Compute acceptance ratio
+          # Assume that "interaction" between the two mutation types is negligible
+          llik.alpha <- determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2 +
+                        (g1+n/2)*(log(d.curr) - log(d.cand))
 
-        # Variation in the degree proposal
-        lprop.alpha <- log(d_probs[1+dtot.curr-nint.curr]) - log(d_probs[1+dtot.cand-nint.curr]) +
-                       (-lchoose(dtot.curr, nint.curr) + lchoose(dtot.cand, nint.curr))
+          # Variation in the degree proposal
+          lprop.alpha <- log(d_probs[1+dtot.curr-nint.curr]) - log(d_probs[1+dtot.cand-nint.curr]) +
+                         (-lchoose(dtot.curr, nint.curr) + lchoose(dtot.cand, nint.curr))
 
-        # Uniform priors + no dimension change <=> no term for the prior
-        alpha <- llik.alpha + lprop.alpha
+          # Uniform priors + no dimension change <=> no term for the prior
+          alpha <- llik.alpha + lprop.alpha
 
-        if(log(runif(1))<alpha){ # accept, update
-          B.curr<-B.cand
-          bhat<-bhat.cand
-          Vinv.curr<-Vinv.cand
-          d.curr<-d.cand
+          if(log(runif(1))<alpha){ # accept, update
+            B.curr<-B.cand
+            BtB.curr <- BtB.cand
+            BtBi.curr <- BtBi.cand
+            bhat<-bhat.cand
+            Vinv.curr<-Vinv.cand
+            d.curr<-d.cand
 
-          vars[i,tochange,1:nint[i-1,tochange]] <- vars.curr # no change
-          degs[i,tochange,1:nint[i-1,tochange]] <- degs.cand
-          nint[i,tochange] <- nint.curr                    # no change
-          dtot[i,tochange] <- dtot.cand
+            vars[i,tochange,1:nint[i-1,tochange]] <- vars.curr # no change
+            degs[i,tochange,1:nint[i-1,tochange]] <- degs.cand
+            nint[i,tochange] <- nint.curr                      # no change
+            dtot[i,tochange] <- dtot.cand
 
-          count_accept[3] <- count_accept[3] + 1
+            count_accept[3] <- count_accept[3] + 1
+          }
         }
         count_propose[3] <- count_propose[3] + 1
 
@@ -386,48 +413,70 @@ adaptive_khaos <-function(X, y,
         basis <- make_basis(vars.cand, degs.curr, X)
         B.cand <- B.curr
         B.cand[,tochange+1] <- basis # replace with our new basis function (+1 for intercept)
+        BtB.cand <- crossprod(B.cand)
+        BtBi.cand <- tryCatch({
+          solve(BtB.cand)
+        }, error = function(e) {
+          FALSE
+        })
 
-        Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1]+1)/tau2
-        bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
-        d.cand <- g2 + ssy - crossprod(bhat.cand,Vinv.cand%*%bhat.cand)
+        if(!isFALSE(BtBi.cand)){ # Otherwise reject immediately
+          Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1]+1)/tau2
+          bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
+          d.cand <- g2 + ssy - crossprod(bhat.cand,Vinv.cand%*%bhat.cand)
 
-        # Compute acceptance ratio
-        # Assume that "interaction" between the two mutation types is negligible
-        llik.alpha <- determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2 +
-          (g1+n/2)*(log(d.curr) - log(d.cand))
+          # Compute acceptance ratio
+          # Assume that "interaction" between the two mutation types is negligible
+          llik.alpha <- determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2 +
+            (g1+n/2)*(log(d.curr) - log(d.cand))
 
-        # Difference in probability of the variables.
-        lprop.alpha <- log(newvar_probs.cand[newvar.cand]) - log(newvar_probs.curr[newvar.curr])
+          # Difference in probability of the variables.
+          lprop.alpha <- log(newvar_probs.cand[newvar.cand]) - log(newvar_probs.curr[newvar.curr])
 
-        # Uniform priors + no dimension change <=> no term for the prior
-        alpha <- llik.alpha + lprop.alpha
+          # Uniform priors + no dimension change <=> no term for the prior
+          alpha <- llik.alpha + lprop.alpha
 
-        if(log(runif(1))<alpha){ # accept, update
-          B.curr<-B.cand
-          bhat<-bhat.cand
-          Vinv.curr<-Vinv.cand
-          d.curr<-d.cand
+          if(log(runif(1))<alpha){ # accept, update
+            B.curr<-B.cand
+            BtB.curr <- BtB.cand
+            BtBi.curr <- BtBi.cand
+            bhat<-bhat.cand
+            Vinv.curr<-Vinv.cand
+            d.curr<-d.cand
 
-          vars[i,tochange,1:nint[i,tochange]] <- vars.cand
-          degs[i,tochange,1:nint[i,tochange]] <- degs.curr # no change
-          nint[i,tochange] <- nint.curr                    # no change
-          dtot[i,tochange] <- dtot.cand                    # no change
+            vars[i,tochange,1:nint[i,tochange]] <- vars.cand
+            degs[i,tochange,1:nint[i,tochange]] <- degs.curr # no change
+            nint[i,tochange] <- nint.curr                    # no change
+            dtot[i,tochange] <- dtot.cand                    # no change
 
-          eta_vec <- eta.cand
+            eta_vec <- eta.cand
 
-          count_accept[4] <- count_accept[4] + 1
+            count_accept[4] <- count_accept[4] + 1
+          }
         }
         count_propose[4] <- count_propose[4] + 1
-
       }
     }
 
     ## Gibbs steps
+    Lambda_n <- BtB.curr + diag(nbasis[i] + 1)/tau2
+    Lambda_i_n <- solve(Lambda_n)
+    beta_ls <- BtBi.curr %*% crossprod(B.curr, y)
+    mu_n <- Lambda_i_n %*% (BtB.curr %*% beta_ls)
+    Sigma_n <- s2[i-1] * Lambda_i_n
+    beta_curr <- t(sample_mvn(1, mu_n, Sigma_n))
+    beta[i,1:(nbasis[i]+1)] <- beta_curr
+    yhat_curr <- B.curr %*% beta_curr
+    resid <- y-yhat_curr
 
-    lam[i]<-rgamma(1,h1+nbasis[i],h2+1) # update lambda
-    S<-solve(crossprod(B.curr)/s2[i-1]+diag(nbasis[i]+1)/tau2) # covariance matrix for beta update
-    beta[i,1:(nbasis[i]+1)] <- sample_mvn(1,S%*%t(B.curr)%*%y/s2[i-1],S) # update beta
-    s2[i]<-1/rgamma(1,n/2+g1,rate=g2+.5*sum((y-B.curr%*%beta[i,1:(nbasis[i]+1)])^2)) # update s2
+    s2[i] <- 1/rgamma(1, n/2+g1, rate = g2+.5*sum(resid^2))
+    lam[i] <- rgamma(1,h1+nbasis[i],h2+1)                                               # update lambda
+    sum_sq[i] <- sum(resid^2)
+
+    # S_cov <- solve(crossprod(B.curr)/s2[i-1]+diag(nbasis[i]+1)/tau2)                    # covariance matrix for beta update
+    # beta[i,1:(nbasis[i]+1)] <- sample_mvn(1, S_cov%*%t(B.curr)%*%y/s2[i-1], S_cov)      # update beta
+    # s2[i] <- 1/rgamma(1,n/2+g1,rate=g2+.5*sum((y-B.curr%*%beta[i,1:(nbasis[i]+1)])^2))  # update s2
+    # #if(s2[i] > 1000) browser()
 
     if(verbose & i%%1000 == 0){
       pr<-c('MCMC iteration',i,myTimestamp(),'nbasis:', nbasis[i])
@@ -455,7 +504,7 @@ adaptive_khaos <-function(X, y,
               vars=vars,degs=degs,
               nint=nint,dtot=dtot,
               nbasis=nbasis,beta=beta,
-              s2=s2,lam=lam,
+              s2=s2,lam=lam,sum_sq=sum_sq,
               eta=eta_vec,
               count_accept=count_accept,
               count_propose=count_propose,
@@ -493,18 +542,18 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
   if(!nugget){
     nreps <- 1
   }
-  pred <- matrix(NA, nrow=length(mcmc.use)*nreps, ncol=nrow(X))
+  pred <- matrix(NA, nrow=length(mcmc.use)*nreps, ncol=nrow(newdata))
   for(i in mcmc.use){
-    B <- matrix(1, nrow=nrow(X),ncol=object$nbasis[i]+1)
+    B <- matrix(1, nrow=nrow(newdata),ncol=object$nbasis[i]+1)
     for(j in 1:object$nbasis[i]){
-      B[,j+1] <- make_basis(object$vars[i,j,1:object$nint[i,j]], object$degs[i,j,1:object$nint[i,j]], X)
+      B[,j+1] <- make_basis(object$vars[i,j,1:object$nint[i,j]], object$degs[i,j,1:object$nint[i,j]], newdata)
     }
     beta_curr <- object$beta[i,1:(object$nbasis[i]+1)]
     if(nugget){
       mu <- matrix(rep(B %*% beta_curr, each=nreps),
-                   nrow=nreps, ncol=nrow(X))
+                   nrow=nreps, ncol=nrow(newdata))
       sigma <- sqrt(object$s2[i])
-      pred[(1 + (i-1)*nreps):(i*nreps),] <- mu + rnorm(nrow(X)*nreps, 0, sigma)
+      pred[(1 + (i-1)*nreps):(i*nreps),] <- mu + rnorm(nrow(newdata)*nreps, 0, sigma)
     }else{
       pred[i,] <- B %*% beta_curr
     }
@@ -519,7 +568,6 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
 #'
 #' @param object An object returned by the \code{adaptive_khaos()} function.
 #' @param ... Additional arguments for plotting
-#' @param nreps How many predictions should be taken for each mcmc sample (ignored when \code{nugget = FALSE}).
 #' @details Plot function for adaptive_khaos object.
 #' @references Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing sensitivity analysis of Bayesian adaptive spline surfaces." Journal of Statistical Software 94.LA-UR-20-23587 (2020).
 #' @examples

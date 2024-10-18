@@ -209,13 +209,15 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
   max_order_curr      <- max(A_ord[1:(best$k-1)])
   at_capacity_degree  <- (max_degree_curr == d_curr) #Note, Shao et al. suggest a +1 on the LHS of ineq.
   at_capacity_order   <- (max_order_curr == o_curr)
-  found_final_model   <- !(at_capacity_degree | at_capacity_order) # Neither degree nor order is at capacity
+  over_max_degree     <- (d_curr >= d_max)
+  over_max_order      <- (o_curr >= o_max)
+  found_final_model   <- (!at_capacity_degree | over_max_degree) & (!at_capacity_order | over_max_order) # Neither degree nor order is at capacity (unless they're at the max)
   next_basis_too_big  <- (A_size(p, d_curr+d_inc, o_curr+o_inc) > max_basis)
-  over_max_deg_ord    <- (d_curr >= d_max) & (o_curr >= o_max)
-  if(found_final_model | next_basis_too_big | over_max_deg_ord){
+  over_max_model      <- over_max_degree & over_max_order
+  if(found_final_model | next_basis_too_big | over_max_model){
     #if(next_degree_too_big) cat("Note: max_degree was reached.\n")
     if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
-    if(over_max_deg_ord) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
+    if(over_max_model) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
     obj <- list(coeff=best$coeff, s2=best$s2, phi=phi[,1:best$k,drop=FALSE],
                 vars=A_set[1:best$k,,drop=FALSE],
                 mu_y=mu_y, sigma_y=sig_y, KIC=best$KIC, X=X, y=y*sig_y + mu_y,

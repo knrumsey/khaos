@@ -10,8 +10,6 @@
 \item{object}{An object returned by the \code{adaptive_khaos()} function.}
 
 \item{...}{Additional arguments for plotting}
-
-\item{nreps}{How many predictions should be taken for each mcmc sample (ignored when \code{nugget = FALSE}).}
 }
 \description{
 See \code{adaptive_khaos()} for details.

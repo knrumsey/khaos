@@ -7,20 +7,20 @@
 adaptive_khaos(
   X,
   y,
-  degree = 12,
+  degree = 15,
   order = 5,
   nmcmc = 10000,
   nburn = 9000,
   thin = 1,
   max_basis = 1000,
-  tau2 = 10^4,
+  tau2 = 10^5,
   g1 = 0,
   g2 = 0,
   h1 = 4,
   h2 = 40/length(y),
   move_probs = rep(1/3, 3),
-  coin_pars = list(function(j) j^-2, 1, 2, 3),
-  degree_penalty = 1,
+  coin_pars = list(function(j) 1/j, 1, 2, 3),
+  degree_penalty = 0,
   verbose = TRUE
 )
 }
