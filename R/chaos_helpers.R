@@ -116,7 +116,59 @@ A_size <- function(p, d, q){
   return(res)
 }
 
+# HELPERS FOR ADAPTIVE VERSION
+
+make_weights <- function(eta, p0, epsilon, alpha, num_passes){
+  p <- length(eta)
+  v <- (eta^alpha + epsilon)/sum((eta^alpha + epsilon))*p0/p
+  delta <- 0
+  for(i in 1:num_passes){
+    beta <- mean((log(p0 + delta) - log(p))/log(v))
+    delta <- delta + p0 - sum(v^beta)
+  }
+  return(v^beta)
+}
+
+# Breaks d into q elements d_1, ... d_q >= 1 s.t d1+...+dq = d.
+# Probability of getting any particular sequence is 1/choose(d-1, q-1)
+random_partition <- function(d, q) {
+  if (d < q) stop("d must be greater than or equal to q")
+  partition <- rep(1, q)
+  remaining <- d - q
+
+  # Intuitive but slow
+  #extra     <- sample(factor(1:q), remaining, replace=TRUE)
+  #partition <- partition + as.numeric(table(extra))
+
+  # Less intuitive but faster
+  cuts <- sort(sample(0:remaining, q - 1, replace = TRUE))
+  additions <- diff(c(0, cuts, remaining))
+  partition <- partition + additions
+  return(partition)
+}
 
 
+make_basis<-function(vv,dd,XX){ # function to make a basis function given vars and degs
+  n <- nrow(XX)
+  curr <- rep(1, n)
+  for(j in seq_along(vv)){
+    curr <- curr * ss_legendre_poly(XX[,vv[j]], dd[j])
+  }
+  return(curr)
+}
+
+# Function to sample from multivariate normal distribution
+sample_mvn <- function(n, m, S) {
+  p <- length(m)
+  L <- chol(S)
+  Z <- matrix(rnorm(n * p), nrow = n)
+  samples <- tcrossprod(Z, L) + matrix(m, nrow = n, ncol = length(m), byrow = TRUE)
+  return(samples)
+}
+
+myTimestamp <-function(){
+  x<-Sys.time()
+  paste('#--',format(x,"%b %d %X"),'--#')
+}
 
 
