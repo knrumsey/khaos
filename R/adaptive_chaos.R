@@ -43,16 +43,16 @@
 #' fit <- adaptive_khaos(X, y)
 #' @export
 adaptive_khaos <-function(X, y,
-                          degree=12, order=5,
+                          degree=15, order=5,
                           nmcmc=10000,
                           nburn=9000,
                           thin=1,
                           max_basis=1000,
                           tau2=10^4,
                           g1=0,g2=0,
-                          h1=4,h2=40/length(y),
+                          h1=4,h2=20/length(y),
                           move_probs=rep(1/3, 3),
-                          coin_pars=list(function(j) j^-2, 1, 2, 3),
+                          coin_pars=list(function(j) j^(-3), 1, 2, 3),
                           degree_penalty=1,
                           verbose=TRUE
 ){
@@ -531,23 +531,25 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
 #'
 #' @export
 plot.adaptive_khaos <- function(object, ...){
-  if(is.null(newdata)){
-    newdata <- object$X
-  }
+  opar <- par(no.readonly = TRUE)
+  par(mfrow = c(2, 2), mar = c(4, 4, 2, 1), oma = c(0, 0, 0, 0))
+
   preds <- predict(object, nugget=TRUE, nreps=10)
   yhat <- apply(preds, 2, mean)
   ci <- 2*apply(preds, 2, sd)
 
-  par(mfrow=c(2,2))
   ts.plot(object$nbasis, ylab="nbasis")
   ts.plot(object$s2, ylab="s2")
   plot(object$y, yhat, pch=16, xlab="y")
-  abline(0,1,col='orange')
   segments(x0=y, y0=yhat-ci, y1=yhat+ci, col='orange')
+
+  points(object$y, yhat, pch=16)
+  abline(0,1,col='dodgerblue')
   rr <- y-yhat
   hist(rr, breaks=ceiling(length(rr)^0.33*diff(range(rr))/(3.5*sd(rr))), freq=F)
   curve(dnorm(x, mean(rr), sd(rr)), add=TRUE, col='orange')
 
+  par(opar)
   return(NULL)
 }
 
