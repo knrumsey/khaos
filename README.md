@@ -3,9 +3,11 @@ khaos
 
 [![License: BSD
 3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
-[![](https://img.shields.io/badge/devel%20version-1.0.0-purple.svg)](https://github.com/knrumsey/khaos)
+[![](https://img.shields.io/badge/devel%20version-2.0.0-purple.svg)](https://github.com/knrumsey/khaos)
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
+
+    ## Warning: package 'lhs' was built under R version 4.3.3
 
 <div class="figure">
 
@@ -16,10 +18,34 @@ This logo was designed by Imagine AI Art Studio
 
 </div>
 
+### Installation
+
+To install this package, use
+
+``` r
+# install.packages("devtools")
+devtools::install_github("knrumsey/khaos")
+```
+
+The `README.Rmd` file can be knit locally for proper rendering of the
+equations. Will add a link here if I ever write a short paper for this.
+
 ### Description
 
-The `khaos` R package provides an efficient implementation of the
-Bayesian Sparse Polynomial Chaos Expansion method of Shao et al. (2017).
+The `khaos` R package provides two implementations of Bayesian
+polynomial chaos expansions. The methods are referred to as “sparse” and
+“adaptive” and can be accessed with the R commands
+
+    sparse_khaos()
+    adapative_khaos()
+
+Sparse khaos is an efficient implementation of the Bayesian Sparse
+Polynomial Chaos Expansion method of Shao et al. (2017) and adaptive
+khaos refers to a modification of the RJMCMC algorithm described by
+Francom & Sanso (2020) originally for BMARS.
+
+### Sparse Khaos
+
 The user provides a $n\times p$ matrix of covariates (scaled to the unit
 hypercube) `X` and a $n$-vector `y` of the scalar response. The user
 also provides an initial value for the maximum polynomial degree $d$ and
@@ -110,17 +136,23 @@ following steps:
         connection to variable selection. Thus we may be able to avoid
         using KIC altogether. We leave this for future work.
 
-### Installation
+### Adaptive Khaos
 
-To install this package, use
+Briefly, this algorithm works by building models of the form
 
-``` r
-# install.packages("devtools")
-devtools::install_github("knrumsey/khaos")
-```
+$$
+f(x) = \sum_{m=1}^M a_m \prod_{i=1}^p \psi_{d_{im}}(x_i)
+$$
 
-The `README.Rmd` file can be knit locally for proper rendering of the
-equations. Will add a link here if I ever write a short paper for this.
+where $\psi_d(x)$ is the “shifted standardized Legendre polynomial” of
+degree $d$. These models are built adaptively from the ground up using a
+simplified RJMCMC algorithm with a (i) modification phase in which basis
+functions are added (birth step), removed (death step), or modified
+(mutation step) and (ii) Gibbs steps for all other model parameters.
+
+The proposal distribution is carefully constructed using what we call
+the “Coin flip proposal”, which is a computational enhancement of the
+ideas described by Nott et al. (2005).
 
 ### Copyright
 
@@ -147,3 +179,11 @@ Methods in Applied Mechanics and Engineering, 318, 474-496.
 Zellner, A. (1986). On assessing prior distributions and Bayesian
 regression analysis with g-prior distributions. *Bayesian inference and
 decision techniques*.
+
+Francom, Devin, and Bruno Sansó. “BASS: An R package for fitting and
+performing sensitivity analysis of Bayesian adaptive spline
+surfaces.” *Journal of Statistical Software* 94.LA-UR-20-23587 (2020).
+
+Nott, David J., Anthony YC Kuk, and Hiep Duc. “Efficient sampling
+schemes for Bayesian MARS models with many predictors.” *Statistics and
+Computing* 15 (2005): 93-101.
