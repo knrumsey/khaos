@@ -451,8 +451,7 @@ adaptive_khaos <-function(X, y,
   lam <- lam[mcmc_iter]
 
 
-
-  return(list(B=B.curr,b=bhat,
+  out <- list(B=B.curr,b=bhat,
               vars=vars,degs=degs,
               nint=nint,dtot=dtot,
               nbasis=nbasis,beta=beta,
@@ -460,7 +459,9 @@ adaptive_khaos <-function(X, y,
               eta=eta_vec,
               count_accept=count_accept,
               count_propose=count_propose,
-              X=X, y=y))
+              X=X, y=y)
+  class(out) <- "adaptive_khaos"
+  return(out)
 }
 
 #' Predict Method for class adaptive_khaos
@@ -486,16 +487,67 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
   if(is.null(newdata)){
     newdata <- object$X
   }
-
-  nmcmc<-length(mod$nbasis)
-  Xt<-t(X)
-  pred<-matrix(nrow=nmcmc-nburn,ncol=nrow(X))
-  for(i in (nburn+1):nmcmc){
-    B<-matrix(nrow=nrow(X),ncol=mod$nbasis[i]+1)
-    B[,1]<-1
-    for(j in 1:mod$nbasis[i])
-      B[,j+1]<-make_basis(mod$signs[i,j,1:mod$nint[i,j]],mod$vars[i,j,1:mod$nint[i,j]],mod$knots[i,j,1:mod$nint[i,j]],Xt)
-    pred[i-nburn,]<-B%*%mod$beta[i,1:(mod$nbasis[i]+1)]
+  if(is.null(mcmc.use)){
+    mcmc.use <- seq_along(object$nbasis)
+  }
+  if(!nugget){
+    nreps <- 1
+  }
+  pred <- matrix(NA, nrow=length(mcmc.use)*nreps, ncol=nrow(X))
+  for(i in mcmc.use){
+    B <- matrix(1, nrow=nrow(X),ncol=object$nbasis[i]+1)
+    for(j in 1:object$nbasis[i]){
+      B[,j+1] <- make_basis(object$vars[i,j,1:object$nint[i,j]], object$degs[i,j,1:object$nint[i,j]], X)
+    }
+    beta_curr <- object$beta[i,1:(object$nbasis[i]+1)]
+    if(nugget){
+      mu <- matrix(rep(B %*% beta_curr, each=nreps),
+                   nrow=nreps, ncol=nrow(X))
+      sigma <- sqrt(object$s2[i])
+      pred[(1 + (i-1)*nreps):(i*nreps),] <- mu + rnorm(nrow(X)*nreps, 0, sigma)
+    }else{
+      pred[i,] <- B %*% beta_curr
+    }
   }
   return(pred)
 }
+
+
+#' Plot Method for class adaptive_khaos
+#'
+#' See \code{adaptive_khaos()} for details.
+#'
+#' @param object An object returned by the \code{adaptive_khaos()} function.
+#' @param ... Additional arguments for plotting
+#' @param nreps How many predictions should be taken for each mcmc sample (ignored when \code{nugget = FALSE}).
+#' @details Plot function for adaptive_khaos object.
+#' @references Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing sensitivity analysis of Bayesian adaptive spline surfaces." Journal of Statistical Software 94.LA-UR-20-23587 (2020).
+#' @examples
+#' X <- lhs::maximinLHS(100, 2)
+#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' fit <- adaptive_khaos(X, y)
+#' plot(fit)
+#'
+#' @export
+plot.adaptive_khaos <- function(object, ...){
+  if(is.null(newdata)){
+    newdata <- object$X
+  }
+  preds <- predict(object, nugget=TRUE, nreps=10)
+  yhat <- apply(preds, 2, mean)
+  ci <- 2*apply(preds, 2, sd)
+
+  par(mfrow=c(2,2))
+  ts.plot(object$nbasis, ylab="nbasis")
+  ts.plot(object$s2, ylab="s2")
+  plot(object$y, yhat, pch=16, xlab="y")
+  abline(0,1,col='orange')
+  segments(x0=y, y0=yhat-ci, y1=yhat+ci, col='orange')
+  rr <- y-yhat
+  hist(rr, breaks=ceiling(length(rr)^0.33*diff(range(rr))/(3.5*sd(rr))), freq=F)
+  curve(dnorm(x, mean(rr), sd(rr)), add=TRUE, col='orange')
+
+  return(NULL)
+}
+

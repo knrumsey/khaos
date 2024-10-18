@@ -19,4 +19,5 @@ plot(yt, colMeans(preds))
 abline(0,1)
 
 ## ADAPTIVE KHAOS
+fit2 <- khaos::adaptive_khaos(X, y)
 
