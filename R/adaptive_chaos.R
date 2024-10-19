@@ -82,7 +82,7 @@ adaptive_khaos <-function(X, y,
   # initialize
   nbasis[1]<-0
   s2[1]<-var(y)
-  lam[1]<-h1/h2
+  lam[1]<-1
   B.curr<-matrix(rep(1,n)) # matrix of current basis functions, so that yhat = B.curr %*% beta
   BtB.curr <- crossprod(B.curr)
   BtBi.curr <- solve(BtB.curr)
@@ -247,7 +247,7 @@ adaptive_khaos <-function(X, y,
         proposal_nint_0 <- proposal_nint_0 + exp(term_0_j)
 
         # if order == p, then it is not possible to overshoot
-        term_q_j <- 0
+        term_q_j <- -Inf
         if(order < p){
           # Use a normal approx for this part
           mu_chi   <- sum(wts.j)

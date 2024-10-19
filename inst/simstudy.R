@@ -181,5 +181,28 @@ results <- duqling::run_sim_study(fit_list, pred_list,
                                   replications=10,
                                   mc_cores=2)
 
-#tmp <- duqling::run_sim_study(fit_list, pred_list, fnames="ishigami", n_train=50, NSR=0, replications=1)
+tmp <- duqling::run_sim_study(fit_list, pred_list, fnames="ishigami", n_train=c(200), NSR=c(0, 0.01, 0.1), replications=10, mc_cores=2)
+
+
+for(i in 1:5){
+  X <- lhs::maximinLHS(2000, 3)
+  Xt <- lhs::maximinLHS(1000, 3)
+  y <- apply(X, 1, duqling::ishigami, scale01=TRUE)
+
+  fit <- fit_list[[i]](X, y)
+  preds <- pred_list[[i]](fit, Xt)
+  print(i)
+  print(dim(preds))
+  print(which(is.na(preds)))
+  print("")
+}
+
+
+
+# THERE SEEMS TO BE A PROBLEM WHEN order == p
+X <- randomLHS(1000, 3)
+y <- apply(X, 1, ishigami, scale01=TRUE)
+fit <- khaos::adaptive_khaos(X, y, degree=10, order=3)
+plot(fit)
+
 
