@@ -32,10 +32,10 @@ pred_laGP <- function(fit, XX){
 
 # khaos
 fit_skhaos <- function(X, y){
-  sparse_khaos(X, y)
+  sparse_khaos(X, y, verbose=FALSE)
 }
 
-pred_skhaos <- function(fit, XX){
+pred_skhaos <- function(fit, XX, verbose=FALSE){
   predict(fit, XX)
 }
 
@@ -166,6 +166,7 @@ fit_list[[1]] <- fit_BART
 fit_list[[2]] <- fit_laGP
 fit_list[[3]] <- fit_skhaos
 fit_list[[4]] <- fit_akhaos
+#fit_list[[4]] <- fit_laGP
 fit_list[[5]] <- fit_pce
 
 pred_list <- list()
@@ -173,29 +174,31 @@ pred_list[[1]] <- pred_BART
 pred_list[[2]] <- pred_laGP
 pred_list[[3]] <- pred_skhaos
 pred_list[[4]] <- pred_akhaos
+#pred_list[[4]] <- pred_laGP
 pred_list[[5]] <- pred_pce
+
+
 results <- duqling::run_sim_study(fit_list, pred_list,
-                                  fnames=c("ishigami", "friedman"),
-                                  n_train = c(200, 2000),
-                                  NSR=c(0, 0.01, 0.1),
-                                  replications=10,
-                                  mc_cores=2)
-
-tmp <- duqling::run_sim_study(fit_list, pred_list, fnames="ishigami", n_train=c(200), NSR=c(0, 0.01, 0.1), replications=10, mc_cores=2)
+                              fnames="ishigami", n_train=c(200, 2000),
+                              NSR=c(0, 0.01, 0.1),
+                              replications=10,
+                              mc_cores=2)
 
 
-for(i in 1:5){
-  X <- lhs::maximinLHS(2000, 3)
-  Xt <- lhs::maximinLHS(1000, 3)
+for(i in 1:10){
+  X <- lhs::randomLHS(200, 3)
+  Xt <- lhs::randomLHS(500, 3)
   y <- apply(X, 1, duqling::ishigami, scale01=TRUE)
 
-  fit <- fit_list[[i]](X, y)
+  fit <- fit_list[[4]](X, y)
+}
+
+
   preds <- pred_list[[i]](fit, Xt)
   print(i)
   print(dim(preds))
   print(which(is.na(preds)))
   print("")
-}
 
 
 

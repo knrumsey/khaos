@@ -217,95 +217,103 @@ adaptive_khaos <-function(X, y,
       tokill<-sample(nbasis[i-1],1) # which basis function we will delete
       B.cand<-B.curr[,-(tokill+1)]  # + 1 to skip the intercept
       BtB.cand <- crossprod(B.cand)
-      BtBi.cand <-solve(BtB.cand)   # There really shouldn't be any issues here, no need for try catch
+      # There really shouldn't be any issues here,
+      # but for some reason we still need tryCatch
+      BtBi.cand <- tryCatch({
+        solve(BtB.cand)
+      }, error = function(e) {
+        FALSE
+      })
 
-      Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1])/tau2
-      bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
-      d.cand <- g2 + ssy - crossprod(bhat.cand,Vinv.cand%*%bhat.cand)
+      if(!isFALSE(BtBi.cand)){ #Otherwise reject immediately
+        Vinv.cand<-crossprod(B.cand)+diag(nbasis[i-1])/tau2
+        bhat.cand<-solve(Vinv.cand)%*%crossprod(B.cand,y)
+        d.cand <- g2 + ssy - crossprod(bhat.cand,Vinv.cand%*%bhat.cand)
 
-      # KR:
-      vars.cand <- vars[i-1, tokill, 1:nint[i-1,tokill]]
-      degs.cand <- degs[i-1, tokill, 1:nint[i-1,tokill]]
-      dtot.cand <- sum(degs.cand)
-      nint.cand <- length(vars.cand)
-      d_probs <- seq_along(nint.cand:degree)^(-degree_penalty)
-      d_probs <- d_probs / sum(d_probs)
+        # KR:
+        vars.cand <- vars[i-1, tokill, 1:nint[i-1,tokill]]
+        degs.cand <- degs[i-1, tokill, 1:nint[i-1,tokill]]
+        dtot.cand <- sum(degs.cand)
+        nint.cand <- length(vars.cand)
+        d_probs <- seq_along(nint.cand:degree)^(-degree_penalty)
+        d_probs <- d_probs / sum(d_probs)
 
-      eta.cand <- eta_vec
-      eta.cand[vars.cand] <- eta.cand[vars.cand] - 1
-      proposal_nint   <- 0 # Probability of proposing the sum that we did
-      proposal_nint_0 <- 0 # Probability of proposing a sum that equals 0
-      proposal_nint_q <- 0 # Probability of proposing a sum that exceeds q=order
-      for(jj in 1:order){
-        wts.j <- make_weights(eta.cand, jj, coin_pars[[3]], coin_pars[[2]], coin_pars[[4]])
-        term_j <- log(J_probs[jj]) - log(Hjs) + sum(log(wts.j[vars.cand])) + sum(log(1 - wts.j[-vars.cand]))
-        proposal_nint <- proposal_nint + exp(term_j)
+        eta.cand <- eta_vec
+        eta.cand[vars.cand] <- eta.cand[vars.cand] - 1
+        proposal_nint   <- 0 # Probability of proposing the sum that we did
+        proposal_nint_0 <- 0 # Probability of proposing a sum that equals 0
+        proposal_nint_q <- 0 # Probability of proposing a sum that exceeds q=order
+        for(jj in 1:order){
+          wts.j <- make_weights(eta.cand, jj, coin_pars[[3]], coin_pars[[2]], coin_pars[[4]])
+          term_j <- log(J_probs[jj]) - log(Hjs) + sum(log(wts.j[vars.cand])) + sum(log(1 - wts.j[-vars.cand]))
+          proposal_nint <- proposal_nint + exp(term_j)
 
-        # Include the delayed rejection stuff
-        # P(sum(chi) = 0) = P(sum(chi) = 0 | q0=1)P(q0=1) + ... + P(sum(chi) = 0 | q0=q)P(q0=q)
-        term_0_j <- log(J_probs[jj]) - log(Hjs) + sum(log(1 - wts.j))
-        proposal_nint_0 <- proposal_nint_0 + exp(term_0_j)
+          # Include the delayed rejection stuff
+          # P(sum(chi) = 0) = P(sum(chi) = 0 | q0=1)P(q0=1) + ... + P(sum(chi) = 0 | q0=q)P(q0=q)
+          term_0_j <- log(J_probs[jj]) - log(Hjs) + sum(log(1 - wts.j))
+          proposal_nint_0 <- proposal_nint_0 + exp(term_0_j)
 
-        # if order == p, then it is not possible to overshoot
-        term_q_j <- -Inf
-        if(order < p){
-          # Use a normal approx for this part
-          mu_chi   <- sum(wts.j)
-          sig_chi  <- sqrt(sum(wts.j*(1-wts.j)))
-          term_q_j <- log(J_probs[jj]) - log(Hjs) +
-                      pnorm(order+1/2,mu_chi,sig_chi,lower.tail=FALSE,log.p=TRUE)
+          # if order == p, then it is not possible to overshoot
+          term_q_j <- -Inf
+          if(order < p){
+            # Use a normal approx for this part
+            mu_chi   <- sum(wts.j)
+            sig_chi  <- sqrt(sum(wts.j*(1-wts.j)))
+            term_q_j <- log(J_probs[jj]) - log(Hjs) +
+                        pnorm(order+1/2,mu_chi,sig_chi,lower.tail=FALSE,log.p=TRUE)
+          }
+          proposal_nint_q <- proposal_nint_q + exp(term_q_j)
         }
-        proposal_nint_q <- proposal_nint_q + exp(term_q_j)
-      }
-      proposal_reject <- min(1, proposal_nint_0 + proposal_nint_q) # The 1 should never trigger, but I added it to be safe since we're using a normal approximation
+        proposal_reject <- min(1, proposal_nint_0 + proposal_nint_q) # The 1 should never trigger, but I added it to be safe since we're using a normal approximation
 
 
-      # calculate the log likelihood ratio (sort of) after integrating out beta and s2
-      llik.alpha <- (
-        -0.5*log(1/tau2) +
-          (determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2) +
-          (g1+n/2)*(log(d.curr) - log(d.cand))
-      )
+        # calculate the log likelihood ratio (sort of) after integrating out beta and s2
+        llik.alpha <- (
+          -0.5*log(1/tau2) +
+            (determinant(Vinv.curr)$mod/2 - determinant(Vinv.cand)$mod/2) +
+            (g1+n/2)*(log(d.curr) - log(d.cand))
+        )
 
-      # log prior ratio
-      lprior.alpha <- (
-        - log(lam[i-1]) + log(nbasis[i-1])     # number of basis functions
-        + log(A_total)                         # Prior over vars/degs
-        - log(nbasis[i-1] + 1)                 # Account for ordering (a historical artifact?)
-      )
+        # log prior ratio
+        lprior.alpha <- (
+          - log(lam[i-1]) + log(nbasis[i-1])     # number of basis functions
+          + log(A_total)                         # Prior over vars/degs
+          - log(nbasis[i-1] + 1)                 # Account for ordering (a historical artifact?)
+        )
 
-      # log proposal ratio (proposed to current via birth) - (current to proposed)
-      lprop.alpha <- (
-         (log(move_probs[1])                               # probability of selection a birth step
-         + log(proposal_nint) - log(1 - proposal_reject)   # probability that we proposed the variables we did (accounting for rejection shenanigans)
-         + log(d_probs[1+dtot.cand-nint.cand])             # probability that we proposed the degree that we did
-         - lchoose(dtot.cand, nint.cand))                  # probability that we proposed the degree partition that we did
-         - (log(move_probs[2])                             # probability of selecting a death step
-         + log(1/nbasis[i-1]))                             # probability of selecting this particular basis function to kill
-      )
+        # log proposal ratio (proposed to current via birth) - (current to proposed)
+        lprop.alpha <- (
+           (log(move_probs[1])                               # probability of selection a birth step
+           + log(proposal_nint) - log(1 - proposal_reject)   # probability that we proposed the variables we did (accounting for rejection shenanigans)
+           + log(d_probs[1+dtot.cand-nint.cand])             # probability that we proposed the degree that we did
+           - lchoose(dtot.cand, nint.cand))                  # probability that we proposed the degree partition that we did
+           - (log(move_probs[2])                             # probability of selecting a death step
+           + log(1/nbasis[i-1]))                             # probability of selecting this particular basis function to kill
+        )
 
-      alpha <- llik.alpha + lprior.alpha + lprop.alpha
+        alpha <- llik.alpha + lprior.alpha + lprop.alpha
 
-      if(log(runif(1))<alpha){ # accept, update
-        B.curr<-B.cand
-        BtB.curr <- BtB.cand
-        BtBi.curr <- BtBi.cand
-        bhat<-bhat.cand
-        Vinv.curr<-Vinv.cand
-        d.curr<-d.cand
-        nbasis[i]<-nbasis[i-1]-1
+        if(log(runif(1))<alpha){ # accept, update
+          B.curr<-B.cand
+          BtB.curr <- BtB.cand
+          BtBi.curr <- BtBi.cand
+          bhat<-bhat.cand
+          Vinv.curr<-Vinv.cand
+          d.curr<-d.cand
+          nbasis[i]<-nbasis[i-1]-1
 
-        nint[i,]<-dtot[i,]<-NA
-        vars[i,,]<-degs[i,,]<-NA
-        if(nbasis[i] > 0){
-          nint[i,1:nbasis[i]]<-nint[i-1,(1:nbasis[i-1])[-tokill]]
-          dtot[i,1:nbasis[i]]<-dtot[i-1,(1:nbasis[i-1])[-tokill]]
+          nint[i,]<-dtot[i,]<-NA
+          vars[i,,]<-degs[i,,]<-NA
+          if(nbasis[i] > 0){
+            nint[i,1:nbasis[i]]<-nint[i-1,(1:nbasis[i-1])[-tokill]]
+            dtot[i,1:nbasis[i]]<-dtot[i-1,(1:nbasis[i-1])[-tokill]]
 
-          vars[i,1:nbasis[i],]<-vars[i-1,(1:nbasis[i-1])[-tokill],]
-          degs[i,1:nbasis[i],]<-degs[i-1,(1:nbasis[i-1])[-tokill],]
+            vars[i,1:nbasis[i],]<-vars[i-1,(1:nbasis[i-1])[-tokill],]
+            degs[i,1:nbasis[i],]<-degs[i-1,(1:nbasis[i-1])[-tokill],]
+          }
+          eta_vec <- eta.cand
+          count_accept[2] <- count_accept[2] + 1
         }
-        eta_vec <- eta.cand
-        count_accept[2] <- count_accept[2] + 1
       }
       count_propose[2] <- count_propose[2] + 1
 

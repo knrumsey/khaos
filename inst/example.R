@@ -1,5 +1,6 @@
 library(duqling)
 library(lhs)
+library(khaos)
 
 # Train on piston function
 set.seed(214098)

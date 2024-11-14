@@ -136,7 +136,7 @@ random_partition <- function(d, q) {
   partition <- rep(1, q)
   remaining <- d - q
 
-  # Intuitive but slow
+  # Intuitive but slower
   #extra     <- sample(factor(1:q), remaining, replace=TRUE)
   #partition <- partition + as.numeric(table(extra))
 
@@ -172,4 +172,16 @@ myTimestamp <-function(){
   paste('#--',format(x,"%b %d %X"),'--#')
 }
 
+
+
+
+p <- sample(100, 50, prob=1/(1:100))
+d <- sample(100, 50, prob=1/(1:100))
+q <- d - sample(1:100, 50, prob=1/(1:100))
+
+cnt1 <- unlist(lapply(1:50, function(ii) A_size(p[ii], d[ii], q[ii])))
+cnt2 <- unlist(lapply(1:50, function(ii){
+  term <- q[ii]*(log(p[ii]) + log(d[ii])) - 2*lfactorial(q[ii])
+  return(exp(term))
+} ))
 
