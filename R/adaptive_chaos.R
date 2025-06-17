@@ -550,17 +550,19 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
   if(!nugget){
     nreps <- 1
   }
-  pred <- matrix(NA, nrow=length(mcmc.use)*nreps, ncol=nrow(newdata))
-  for(i in mcmc.use){
-    B <- matrix(1, nrow=nrow(newdata),ncol=object$nbasis[i]+1)
-    for(j in 1:object$nbasis[i]){
-      B[,j+1] <- make_basis(object$vars[i,j,1:object$nint[i,j]], object$degs[i,j,1:object$nint[i,j]], newdata)
+  n_use <- length(mcmc.use)
+  pred <- matrix(NA, nrow=n_use*nreps, ncol=nrow(newdata))
+  for(i in 1:n_use){
+    idx = idx_use[i]
+    B <- matrix(1, nrow=nrow(newdata),ncol=object$nbasis[idx]+1)
+    for(j in 1:object$nbasis[idx]){
+      B[,j+1] <- make_basis(object$vars[idx,j,1:object$nint[idx,j]], object$degs[idx,j,1:object$nint[idx,j]], newdata)
     }
-    beta_curr <- object$beta[i,1:(object$nbasis[i]+1)]
+    beta_curr <- object$beta[idx,1:(object$nbasis[idx]+1)]
     if(nugget){
       mu <- matrix(rep(B %*% beta_curr, each=nreps),
                    nrow=nreps, ncol=nrow(newdata))
-      sigma <- sqrt(object$s2[i])
+      sigma <- sqrt(object$s2[idx])
       pred[(1 + (i-1)*nreps):(i*nreps),] <- mu + rnorm(nrow(newdata)*nreps, 0, sigma)
     }else{
       pred[i,] <- B %*% beta_curr
