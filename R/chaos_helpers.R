@@ -161,7 +161,7 @@ make_basis<-function(vv,dd,XX){ # function to make a basis function given vars a
 sample_mvn <- function(n, m, S) {
   p <- length(m)
   L <- chol(S)
-  Z <- matrix(rnorm(n * p), nrow = n)
+  Z <- matrix(stats::rnorm(n * p), nrow = n)
   samples <- tcrossprod(Z, L) + matrix(m, nrow = n, ncol = length(m), byrow = TRUE)
   return(samples)
 }
