@@ -19,7 +19,7 @@
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- sparse_khaos(X, y)
 #' @export
 sparse_khaos <- function(X, y,
@@ -45,7 +45,7 @@ sparse_khaos <- function(X, y,
   o_max  <- min(p, order[3])
 
   mu_y <- mean(y)
-  sig_y <- sd(y)
+  sig_y <- stats::sd(y)
   y <- (y - mu_y)/sig_y
 
   res <- sparse_khaos_wrapper(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose)
@@ -87,7 +87,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
       curr <- curr * ss_legendre_poly(X[,j], A_set[i,j])
     }
     phi[,i] <- curr
-    rr[i] <- cor(curr, y)
+    rr[i] <- stats::cor(curr, y)
   }
   ord <- rev(order(rr^2))
   A_set <- A_set[ord,]
@@ -121,9 +121,9 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     if(N_alpha > 20 && ((i %% round(N_alpha/5)) == 0)){
       if(verbose) cat(i, "/", N_alpha, ", ",sep="")
     }
-    eps_y <- lm(y ~ phi[,1:(i-1)])$residuals
-    eps_p <- lm(phi[,i] ~ phi[,1:(i-1)])$residuals
-    rr[i] <- cor(eps_y, eps_p)
+    eps_y <- stats::lm(y ~ phi[,1:(i-1)])$residuals
+    eps_p <- stats::lm(phi[,i] ~ phi[,1:(i-1)])$residuals
+    rr[i] <- stats::cor(eps_y, eps_p)
   }
 
   if(any(abs(rr) > 1)){
@@ -190,8 +190,8 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     Sigma_prior <- sqrt(diag(BtBi)*Gdiag[1:k]*prior[3]^2/prior[2]*n/n0) # Take the diagonal for simplicity
     Sigma_post  <- (G1[1:k] * BtBi) * as.numeric(s2_mle) # equivalent to (diag(G1) %*% BtBi)
 
-    KIC[k] <- -2*sum(dnorm(y, yhat_k, sqrt(s2_map), log=TRUE)) -
-      2*sum(dnorm(as.numeric(a_map), 0, Sigma_prior, log=TRUE)) -
+    KIC[k] <- -2*sum(stats::dnorm(y, yhat_k, sqrt(s2_map), log=TRUE)) -
+      2*sum(stats::dnorm(as.numeric(a_map), 0, Sigma_prior, log=TRUE)) -
       lambda*(k+1)*log(2*pi) + log(det(Sigma_post))
 
     if(KIC[k] <= best$KIC){
@@ -239,17 +239,18 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
 #' @param object An object returned by the \code{sparse_khaos()} function.
 #' @param newdata A dataframe of the same dimension as the training data.
 #' @param samples How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.
+#' @param ... Additional arguments to predict
 #' @details Predict function for sparse_khaos object.
 #' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- sparse_khaos(X, y)
 #' predict(fit)
 #'
 #' @export
-predict.sparse_khaos <- function(object, newdata=NULL, samples=1000){
+predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
   if(is.null(newdata)){
     newdata <- object$X
   }
@@ -274,12 +275,12 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000){
     pred <- matrix(NA, nrow=samples, ncol=n)
     for(i in 1:samples){
       shape <-  (ntrain+v0-p)/2
-      sigma2 <- 1/rgamma(1, shape, object$s2*shape)
+      sigma2 <- 1/stats::rgamma(1, shape, object$s2*shape)
       a_Sigma <- sigma2 * (object$G * object$BtBi)
       a_hat <- object$coeff
-      coeff <- rnorm(a_hat, a_hat, diag(a_Sigma))
-      #noise <- sqrt(1/rgamma(1, (n+2)/2, scale=2/(n*object$s2)))
-      y_hat <- phi%*%coeff + rnorm(n, 0, sqrt(sigma2))
+      coeff <- stats::rnorm(a_hat, a_hat, diag(a_Sigma))
+      #noise <- sqrt(1/stats::rgamma(1, (n+2)/2, scale=2/(n*object$s2)))
+      y_hat <- phi%*%coeff + stats::rnorm(n, 0, sqrt(sigma2))
       pred[i,] <- y_hat
     }
   }else{
@@ -300,23 +301,19 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000){
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- sparse_khaos(X, y)
 #' plot(fit)
 #' @export
 plot.sparse_khaos <- function(x, ...){
-  pred <- predict(x, x$X, samples=1000)
+  pred <- stats::predict(x, x$X, samples=1000)
   yhat <- colMeans(pred)
   plot(x$y, yhat, ...)
-  abline(0, 1, lwd=2, col='orange')
+  graphics::abline(0, 1, lwd=2, col='orange')
 
-  ci <- apply(pred, 2, function(yy) quantile(yy, c(0.025, 0.975)))
+  ci <- apply(pred, 2, function(yy) stats::quantile(yy, c(0.025, 0.975)))
   for(i in 1:ncol(ci)){
-    segments(x$y[i], ci[1,i], x$y[i], ci[2,i])
+    graphics::segments(x$y[i], ci[1,i], x$y[i], ci[2,i])
   }
 }
-
-
-
-
 

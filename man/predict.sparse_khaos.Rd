@@ -4,7 +4,7 @@
 \alias{predict.sparse_khaos}
 \title{Predict Method for class sparse_khaos}
 \usage{
-\method{predict}{sparse_khaos}(object, newdata = NULL, samples = 1000)
+\method{predict}{sparse_khaos}(object, newdata = NULL, samples = 1000, ...)
 }
 \arguments{
 \item{object}{An object returned by the \code{sparse_khaos()} function.}
@@ -12,6 +12,8 @@
 \item{newdata}{A dataframe of the same dimension as the training data.}
 
 \item{samples}{How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.}
+
+\item{...}{Additional arguments to predict}
 }
 \description{
 See \code{sparse_khaos()} for details.
@@ -22,7 +24,7 @@ Predict function for sparse_khaos object.
 \examples{
 X <- lhs::maximinLHS(100, 2)
 f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 fit <- sparse_khaos(X, y)
 predict(fit)
 

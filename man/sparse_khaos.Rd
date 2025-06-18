@@ -49,7 +49,7 @@ Fitting process terminates when either (i) max_basis is exceeded or (ii) current
 \examples{
 X <- lhs::maximinLHS(100, 2)
 f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 fit <- sparse_khaos(X, y)
 }
 \references{

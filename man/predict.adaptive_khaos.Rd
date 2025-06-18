@@ -4,7 +4,14 @@
 \alias{predict.adaptive_khaos}
 \title{Predict Method for class adaptive_khaos}
 \usage{
-\method{predict}{adaptive_khaos}(object, newdata = NULL, mcmc.use = NULL, nugget = FALSE, nreps = 1)
+\method{predict}{adaptive_khaos}(
+  object,
+  newdata = NULL,
+  mcmc.use = NULL,
+  nugget = FALSE,
+  nreps = 1,
+  ...
+)
 }
 \arguments{
 \item{object}{An object returned by the \code{adaptive_khaos()} function.}
@@ -16,6 +23,8 @@
 \item{nugget}{Logical. Should predictions include error?}
 
 \item{nreps}{How many predictions should be taken for each mcmc sample (ignored when \code{nugget = FALSE}).}
+
+\item{...}{Additional arguments to predict}
 }
 \description{
 See \code{adaptive_khaos()} for details.
@@ -26,7 +35,7 @@ Predict function for adaptive_khaos object.
 \examples{
 X <- lhs::maximinLHS(100, 2)
 f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 fit <- adaptive_khaos(X, y)
 predict(fit)
 
