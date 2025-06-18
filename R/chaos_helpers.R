@@ -20,9 +20,9 @@ generate_A <- function(p, d, q) {
   #res <- list()
 
   # Recursive function
-  generate <- function(current_set, current_sum, current_nonzero, index) {
+  generate <- function(current_set, current_sum, current_nonzero, index){
     if (current_sum > d || current_nonzero > q) return()
-    if (index > p) {
+    if (index > p){
       if(current_nonzero > 0){
         res <<- rbind(res, current_set)
         #res <- c(res, list(current_set))
@@ -166,22 +166,42 @@ sample_mvn <- function(n, m, S) {
   return(samples)
 }
 
-
 myTimestamp <-function(){
   x<-Sys.time()
   paste('#--',format(x,"%b %d %X"),'--#')
 }
 
+test_iid_unif <- function(X, Nsims=1000, alpha=0.01){
+  # Test uniformity
+  p_unif <- min(apply(X, 2, function(xx) ks.test(xx, "punif")$p.value))
+
+  # Test pairwise independence
+  nn <- nrow(X)
+  pp <- ncol(X)
+  NN <- Nsims
+
+  S0 <- diag(rep(1/12), pp)
+  Sx <- cov(X)
+  Tx <- sum((S0-Sx)^2)
+  T0 <- rep(NA, NN)
+  for(ii in 1:NN){
+    Xi <- matrix(runif(nn*pp), nrow=nn, ncol=pp)
+    Si <- cov(Xi)
+    T0[ii] <- sum((S0-Si)^2)
+  }
+  p_ind <- mean(T0 > Tx)
 
 
+  T_obs <- norm(cov(X) - (1/12) * diag(pp), type = "F")^2
+  T_null <- replicate(NN, {
+    norm(cov(matrix(runif(nn * pp), nn, pp)) - (1/12) * diag(pp), type = "F")^2
+  })
+  p_val <- mean(T_null > T_obs)  # one-sided
 
-p <- sample(100, 50, prob=1/(1:100))
-d <- sample(100, 50, prob=1/(1:100))
-q <- d - sample(1:100, 50, prob=1/(1:100))
-
-cnt1 <- unlist(lapply(1:50, function(ii) A_size(p[ii], d[ii], q[ii])))
-cnt2 <- unlist(lapply(1:50, function(ii){
-  term <- q[ii]*(log(p[ii]) + log(d[ii])) - 2*lfactorial(q[ii])
-  return(exp(term))
-} ))
+  if(min(p_ind, p_unif) < alpha){
+    return(FALSE)
+  }else{
+    return(TRUE)
+  }
+}
 

@@ -11,6 +11,7 @@
 #' @param thin Keep every \code{thin} samples.
 #' @param max_basis Maximum number of basis functions.
 #' @param tau2 Prior variance for coefficients
+#' @param s2_lower Lower bound on process variance (numerically useful for deterministic functions).
 #' @param g1,g2 Shape/scale parameters for the IG prior on process variance (default is Jefffrey's prior)
 #' @param h1,h2 Shape/scale parameters for the Gamma prior on expected number of basis functions.
 #' @param move_probs A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.
@@ -51,6 +52,7 @@ adaptive_khaos <-function(X, y,
                           thin=1,
                           max_basis=1000,
                           tau2=10^5,
+                          s2_lower=1e-6*var(y),
                           g1=0,g2=0,
                           h1=4,h2=40/length(y),
                           move_probs=rep(1/3, 3),
@@ -58,6 +60,16 @@ adaptive_khaos <-function(X, y,
                           degree_penalty=0,
                           verbose=TRUE
 ){
+  # Define a safer solve
+  # Note: Under iid uniform X, columns of B are uncorrelated.
+  #       So the tolerance should be pretty safe unless there's an
+  #       extreme amount of correlation in X.
+  safe_solve <- function(A, tol = 1e-9) {
+    rc <- rcond(A)
+    if (is.na(rc) || rc < tol) return(FALSE)
+    solve(A)
+  }
+
   n<-length(y)
   p<-ncol(X)
   ssy<-sum(y^2)
@@ -141,7 +153,7 @@ adaptive_khaos <-function(X, y,
         }
         delayed_reject_term <- delayed_reject_term + log(res)
       }
-      vars.cand <- which(chi.cand == 1)
+      #vars.cand <- which(chi.cand == 1)
       nint.cand <- length(vars.cand)
       d_probs <- seq_along(nint.cand:degree)^(-degree_penalty)
       d_probs <- d_probs / sum(d_probs)
@@ -153,12 +165,14 @@ adaptive_khaos <-function(X, y,
       #signs.cand<-sample(c(-1,1),nint.cand,replace = T) # signs for new basis function
 
       # KR:
+
+
       if(nint.cand == 0) stop("Why is nint.cand zero? This shouldn't be possible.")
       basis.cand <- make_basis(vars.cand, degs.cand, X)
       B.cand <- cbind(B.curr,basis.cand) # add the new basis function to the basis functions we already have
       BtB.cand <- crossprod(B.cand)
       BtBi.cand <- tryCatch({
-        solve(BtB.cand)
+        safe_solve(BtB.cand)
       }, error = function(e) {
         FALSE
       })
@@ -213,6 +227,7 @@ adaptive_khaos <-function(X, y,
           count_accept[1] <- count_accept[1] + 1
         }
       }
+      # Auto reject birth
       count_propose[1] <- count_propose[1] + 1
 
     } else if(move.type=='death'){
@@ -222,7 +237,7 @@ adaptive_khaos <-function(X, y,
       # There really shouldn't be any issues here,
       # but for some reason we still need tryCatch
       BtBi.cand <- tryCatch({
-        solve(BtB.cand)
+        safe_solve(BtB.cand)
       }, error = function(e) {
         FALSE
       })
@@ -349,7 +364,7 @@ adaptive_khaos <-function(X, y,
         B.cand[,tochange+1] <- basis # replace with our new basis function (+1 for intercept)
         BtB.cand <- crossprod(B.cand)
         BtBi.cand <- tryCatch({
-          solve(BtB.cand)
+          safe_solve(BtB.cand)
         }, error = function(e) {
           FALSE
         })
@@ -425,7 +440,7 @@ adaptive_khaos <-function(X, y,
         B.cand[,tochange+1] <- basis # replace with our new basis function (+1 for intercept)
         BtB.cand <- crossprod(B.cand)
         BtBi.cand <- tryCatch({
-          solve(BtB.cand)
+          safe_solve(BtB.cand)
         }, error = function(e) {
           FALSE
         })
@@ -468,6 +483,11 @@ adaptive_khaos <-function(X, y,
       }
     }
 
+    ev <- eigen(BtB.curr)$values
+    if(max(ev)/min(ev) > 1e9){
+      browser()
+    }
+
     ## Gibbs steps
     Lambda_n <- BtB.curr + diag(nbasis[i] + 1)/tau2
     Lambda_i_n <- solve(Lambda_n)
@@ -479,7 +499,8 @@ adaptive_khaos <-function(X, y,
     yhat_curr <- B.curr %*% beta_curr
     resid <- y-yhat_curr
 
-    s2[i] <- 1/stats::rgamma(1, n/2+g1, rate = g2+.5*sum(resid^2))
+
+    s2[i] <- max(s2_lower, 1/stats::rgamma(1, n/2+g1, rate = g2+.5*sum(resid^2)))
     lam[i] <- stats::rgamma(1,h1+nbasis[i],h2+1)                                               # update lambda
     sum_sq[i] <- sum(resid^2)
 

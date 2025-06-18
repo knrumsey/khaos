@@ -14,6 +14,7 @@ adaptive_khaos(
   thin = 1,
   max_basis = 1000,
   tau2 = 10^5,
+  s2_lower = 1e-06 * var(y),
   g1 = 0,
   g2 = 0,
   h1 = 4,
@@ -42,6 +43,8 @@ adaptive_khaos(
 \item{max_basis}{Maximum number of basis functions.}
 
 \item{tau2}{Prior variance for coefficients}
+
+\item{s2_lower}{Lower bound on process variance (numerically useful for deterministic functions).}
 
 \item{g1, g2}{Shape/scale parameters for the IG prior on process variance (default is Jefffrey's prior)}
 
