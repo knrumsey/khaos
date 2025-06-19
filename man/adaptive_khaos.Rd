@@ -14,7 +14,7 @@ adaptive_khaos(
   thin = 1,
   max_basis = 1000,
   tau2 = 10^5,
-  s2_lower = 1e-06 * var(y),
+  s2_lower = 0,
   g1 = 0,
   g2 = 0,
   h1 = 4,

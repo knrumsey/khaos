@@ -52,7 +52,7 @@ adaptive_khaos <-function(X, y,
                           thin=1,
                           max_basis=1000,
                           tau2=10^5,
-                          s2_lower=1e-6*var(y),
+                          s2_lower=0,
                           g1=0,g2=0,
                           h1=4,h2=40/length(y),
                           move_probs=rep(1/3, 3),
@@ -337,10 +337,15 @@ adaptive_khaos <-function(X, y,
     } else{ # KR: mutate
 
       # Adapt which mutation should get used.
-      mutate_eps <- 0.1 # hard coded
-      success_rates <- count_accept[3:4]/(0.01 + count_propose[3:4])
-      mutate_prob <- mutate_eps + (1 - 2*mutate_eps) * stats::pnorm(-diff(pmin(5,pmax(-5,stats::qnorm(success_rates)))))
-      mutate_type <- stats::rbinom(1, 1, mutate_prob)
+      if(p <= 3){
+        # Second mutation type isn't really needed for small p
+        mutate_type <- 1
+      }else{
+        mutate_eps <- 0.1 # hard coded (worst case probability for either type)
+        success_rates <- count_accept[3:4]/(0.01 + count_propose[3:4])
+        mutate_prob <- mutate_eps + (1 - 2*mutate_eps) * stats::pnorm(-diff(pmin(5,pmax(-5,stats::qnorm(success_rates)))))
+        mutate_type <- stats::rbinom(1, 1, mutate_prob)
+      }
 
       # MUTATION TYPE 1: Re-sample the degrees
       if(mutate_type == 1){
@@ -483,11 +488,6 @@ adaptive_khaos <-function(X, y,
       }
     }
 
-    ev <- eigen(BtB.curr)$values
-    if(max(ev)/min(ev) > 1e9){
-      browser()
-    }
-
     ## Gibbs steps
     Lambda_n <- BtB.curr + diag(nbasis[i] + 1)/tau2
     Lambda_i_n <- solve(Lambda_n)
@@ -575,6 +575,7 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
     nreps <- 1
   }
   pred <- matrix(NA, nrow=length(mcmc.use)*nreps, ncol=nrow(newdata))
+  cnt <- 1
   for(i in mcmc.use){
     B <- matrix(1, nrow=nrow(newdata),ncol=object$nbasis[i]+1)
     for(j in 1:object$nbasis[i]){
@@ -585,10 +586,11 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
       mu <- matrix(rep(B %*% beta_curr, each=nreps),
                    nrow=nreps, ncol=nrow(newdata))
       sigma <- sqrt(object$s2[i])
-      pred[(1 + (i-1)*nreps):(i*nreps),] <- mu + stats::rnorm(nrow(newdata)*nreps, 0, sigma)
+      pred[(1 + (cnt-1)*nreps):(cnt*nreps),] <- mu + stats::rnorm(nrow(newdata)*nreps, 0, sigma)
     }else{
-      pred[i,] <- B %*% beta_curr
+      pred[cnt,] <- B %*% beta_curr
     }
+    cnt <- cnt + 1
   }
   return(pred)
 }
