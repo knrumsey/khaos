@@ -173,7 +173,7 @@ myTimestamp <-function(){
 
 test_iid_unif <- function(X, Nsims=1000, alpha=0.01){
   # Test uniformity
-  p_unif <- min(apply(X, 2, function(xx) ks.test(xx, "punif")$p.value))
+  p_unif <- min(apply(X, 2, function(xx) stats::ks.test(xx, "punif")$p.value))
 
   # Test pairwise independence
   nn <- nrow(X)
@@ -181,20 +181,20 @@ test_iid_unif <- function(X, Nsims=1000, alpha=0.01){
   NN <- Nsims
 
   S0 <- diag(rep(1/12), pp)
-  Sx <- cov(X)
+  Sx <- stats::cov(X)
   Tx <- sum((S0-Sx)^2)
   T0 <- rep(NA, NN)
   for(ii in 1:NN){
-    Xi <- matrix(runif(nn*pp), nrow=nn, ncol=pp)
-    Si <- cov(Xi)
+    Xi <- matrix(stats::runif(nn*pp), nrow=nn, ncol=pp)
+    Si <- stats::cov(Xi)
     T0[ii] <- sum((S0-Si)^2)
   }
   p_ind <- mean(T0 > Tx)
 
 
-  T_obs <- norm(cov(X) - (1/12) * diag(pp), type = "F")^2
+  T_obs <- norm(stats::cov(X) - (1/12) * diag(pp), type = "F")^2
   T_null <- replicate(NN, {
-    norm(cov(matrix(runif(nn * pp), nn, pp)) - (1/12) * diag(pp), type = "F")^2
+    norm(stats::cov(matrix(stats::runif(nn * pp), nn, pp)) - (1/12) * diag(pp), type = "F")^2
   })
   p_val <- mean(T_null > T_obs)  # one-sided
 

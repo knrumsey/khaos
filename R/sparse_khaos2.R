@@ -6,7 +6,7 @@
 #' @param y A numeric response vector of length \code{nrow(X)}.
 #' @param degree A vector of length 3 specifying the degree schedule: \code{c(d_init, d_increment, d_max)}. The degree is increased by \code{d_increment} if the current model includes a term of maximal degree, up to \code{d_max}.
 #' @param order A vector of length 3 specifying the interaction order schedule: \code{c(q_init, q_increment, q_max)}.
-#' @param sigma_prior A vector \code{c(v0, s0)} specifying the inverse-gamma prior on \eqn{\sigma^2}: degrees of freedom (\code{v0}) and scale (\code{s0}). The prior is \eqn{\sigma^2 \sim \text{Inv-Gamma}(v_0/2, v_0 s_0^2 / 2)}.
+#' @param sigma_prior A vector \code{c(v0, s0)} specifying the inverse-gamma prior on \eqn{sigma^2}: degrees of freedom (\code{v0}) and scale (\code{s0}). The prior is \eqn{sigma^2 \sim \text{Inv-Gamma}(v_0/2, v_0 s_0^2 / 2)}.
 #' @param g_prior A vector \code{c(n0, m0, xi)} where \code{n0} is the prior strength on \eqn{g_0^2}, \code{m0} is the prior mean, and \code{xi} controls the penalty on complex basis functions in the modified \(g\)-prior. The prior is \eqn{g_0^2 \sim \text{Inv-Gamma}(n_0/2, n_0 m_0 / 2)}.
 #' @param sM A numeric value controlling the model complexity prior: \eqn{p(\mathcal{M}) \propto |M|^{-s_M}}. Set \code{sM = 0} for a uniform prior over model size (default).
 #' @param regularize Logical. If \code{TRUE}, applies LASSO-based pre-screening to reduce the size of the candidate basis set.
@@ -24,7 +24,7 @@
 #_         full active-variable library is rebuilt each round
 #'         (default 4\,000).}
 #'   \item{\code{max_basis}}{hard upper bound on total candidate columns
-#'         (default \(3\times10^5\)).}
+#'         (default \(3X10^5\)).}
 #'   \item{\code{patience}}{early-stop counter for the forward search
 #'         (default \code{Inf}, i.e.\ evaluate all \(k\)).}
 #'   \item{\code{orth_test}}{vector \code{c(L, significance_level)} for the automatic
@@ -34,7 +34,7 @@
 #' @details
 #' The function builds the model incrementally, starting with polynomial degree \code{degree[1]} and interaction order \code{order[1]}. If the current model includes any terms of maximal degree or order, the values are increased (up to \code{degree[3]} and \code{order[3]}, respectively), and the process restarts.
 #'
-#' The modified \(g\)-prior used here includes an additional shrinkage term controlled by \code{xi}, which penalizes complex basis functions based on their total degree and interaction order. Priors over \(\sigma^2\) and \(g_0^2\) are specified using interpretable parameters derived from standard inverse-gamma formulations.
+#' The modified \(g\)-prior used here includes an additional shrinkage term controlled by \code{xi}, which penalizes complex basis functions based on their total degree and interaction order. Priors over \(sigma^2\) and \(g_0^2\) are specified using interpretable parameters derived from standard inverse-gamma formulations.
 #'
 #' The \code{evidence} argument controls how marginal likelihoods are evaluated during model selection. If \code{"auto"}, the algorithm performs a one-time diagnostic of the input distribution using Kolmogorov–Smirnov and simulation-based Frobenius norm tests to determine whether the orthogonality approximation can be safely used. The options \code{"fast"} and \code{"full"} override this and force either the approximation or the full method, respectively.
 #'
@@ -114,7 +114,7 @@ sparse_khaos2 <- function(X, y,
   o_max  <- min(p, order[3])
 
   mu_y <- mean(y)
-  sig_y <- sd(y)
+  sig_y <- stats::sd(y)
   y <- (y - mu_y)/sig_y
 
   res <- sparse_khaos_wrapper2(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, sigma_prior, g_prior, sM, grid_size, patience, enrichment, max_basis_enrichment, evidence, regularize, verbose, NULL)
@@ -170,7 +170,7 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
       curr <- curr * ss_legendre_poly(X[,j], A_set[i,j])
     }
     phi[,i] <- curr
-    rr[i] <- cor(curr, y)
+    rr[i] <- stats::cor(curr, y)
   }
   ord <- rev(order(rr^2))
   A_set <- A_set[ord,]
@@ -202,7 +202,7 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
 
   # Handle the g stuff
   g_diag <- c(1, (1 + A_ord * (A_ord + A_deg - 2))^(-xi/2))
-  g0_grid  <- 1 / qgamma((1:grid_size)/(grid_size+1), a_g, b_g)  # Inv-Gamma quantiles
+  g0_grid  <- 1 / stats::qgamma((1:grid_size)/(grid_size+1), a_g, b_g)  # Inv-Gamma quantiles
   log_mean_exp <- function(z) {               # stable log-mean-exp
     m <- max(z);  m + log(mean(exp(z - m)))
   }

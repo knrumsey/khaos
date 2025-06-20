@@ -29,7 +29,7 @@ sparse_khaos2(
 
 \item{order}{A vector of length 3 specifying the interaction order schedule: \code{c(q_init, q_increment, q_max)}.}
 
-\item{sigma_prior}{A vector \code{c(v0, s0)} specifying the inverse-gamma prior on \eqn{\sigma^2}: degrees of freedom (\code{v0}) and scale (\code{s0}). The prior is \eqn{\sigma^2 \sim \text{Inv-Gamma}(v_0/2, v_0 s_0^2 / 2)}.}
+\item{sigma_prior}{A vector \code{c(v0, s0)} specifying the inverse-gamma prior on \eqn{sigma^2}: degrees of freedom (\code{v0}) and scale (\code{s0}). The prior is \eqn{sigma^2 \sim \text{Inv-Gamma}(v_0/2, v_0 s_0^2 / 2)}.}
 
 \item{g_prior}{A vector \code{c(n0, m0, xi)} where \code{n0} is the prior strength on \eqn{g_0^2}, \code{m0} is the prior mean, and \code{xi} controls the penalty on complex basis functions in the modified \(g\)-prior. The prior is \eqn{g_0^2 \sim \text{Inv-Gamma}(n_0/2, n_0 m_0 / 2)}.}
 
@@ -52,7 +52,7 @@ A Bayesian implementation of sparse Polynomial Chaos Expansion (PCE), based on t
 \details{
 The function builds the model incrementally, starting with polynomial degree \code{degree[1]} and interaction order \code{order[1]}. If the current model includes any terms of maximal degree or order, the values are increased (up to \code{degree[3]} and \code{order[3]}, respectively), and the process restarts.
 
-The modified \(g\)-prior used here includes an additional shrinkage term controlled by \code{xi}, which penalizes complex basis functions based on their total degree and interaction order. Priors over \(\sigma^2\) and \(g_0^2\) are specified using interpretable parameters derived from standard inverse-gamma formulations.
+The modified \(g\)-prior used here includes an additional shrinkage term controlled by \code{xi}, which penalizes complex basis functions based on their total degree and interaction order. Priors over \(sigma^2\) and \(g_0^2\) are specified using interpretable parameters derived from standard inverse-gamma formulations.
 
 The \code{evidence} argument controls how marginal likelihoods are evaluated during model selection. If \code{"auto"}, the algorithm performs a one-time diagnostic of the input distribution using Kolmogorov–Smirnov and simulation-based Frobenius norm tests to determine whether the orthogonality approximation can be safely used. The options \code{"fast"} and \code{"full"} override this and force either the approximation or the full method, respectively.
 
@@ -74,7 +74,7 @@ integrating over \(g_0^2\) (default 25).}
 \item{\code{max_basis_enrichment}}{threshold below which the
 (default 4\,000).}
 \item{\code{max_basis}}{hard upper bound on total candidate columns
-(default \(3\times10^5\)).}
+(default \(3X10^5\)).}
 \item{\code{patience}}{early-stop counter for the forward search
 (default \code{Inf}, i.e.\ evaluate all \(k\)).}
 \item{\code{orth_test}}{vector \code{c(L, significance_level)} for the automatic
