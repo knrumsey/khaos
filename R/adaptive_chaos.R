@@ -494,7 +494,8 @@ adaptive_khaos <-function(X, y,
     beta_ls <- BtBi.curr %*% crossprod(B.curr, y)
     mu_n <- Lambda_i_n %*% (BtB.curr %*% beta_ls)
     Sigma_n <- s2[i-1] * Lambda_i_n
-    beta_curr <- t(sample_mvn(1, mu_n, Sigma_n))
+    beta_curr <- t(rmvnorm(1, mu_n, Sigma_n))
+    # beta_curr <- t(sample_mvn(1, mu_n, Sigma_n))
     beta[i,1:(nbasis[i]+1)] <- beta_curr
     yhat_curr <- B.curr %*% beta_curr
     resid <- y-yhat_curr
