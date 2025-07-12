@@ -2,8 +2,8 @@
 #'
 #' The emulation approach of Francom et al. (2020) for BMARS, modified for polynomial chaos.
 #'
-#' @param X A dataframe or matrix of predictors scaled to be between 0 and 1
-#' @param y a reponse vector
+#' @param X A data frame or matrix of predictors scaled to be between 0 and 1
+#' @param y a response vector
 #' @param degree Maximum polynomial degree for each basis function.
 #' @param order Maximum order of interaction for each basis function.
 #' @param nmcmc Number of MCMC iterations.
@@ -11,6 +11,7 @@
 #' @param thin Keep every \code{thin} samples.
 #' @param max_basis Maximum number of basis functions.
 #' @param tau2 Prior variance for coefficients
+#' @param s2_lower Lower bound on process variance (numerically useful for deterministic functions).
 #' @param g1,g2 Shape/scale parameters for the IG prior on process variance (default is Jefffrey's prior)
 #' @param h1,h2 Shape/scale parameters for the Gamma prior on expected number of basis functions.
 #' @param move_probs A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.
@@ -20,14 +21,16 @@
 #' @details Implements the RJMCMC algorithm described by Francom & Sanso (2020) for BMARS, modifying it for polynomial chaos basis functions.
 #' As an alternative the NKD procedure of Nott et al. (2005), we use a coinflipping procedure to identify useful variables. See writeup (coming soon) for details.
 #' The coin_pars argument is an ordered list with elements:
-#' (i) a function giving proposal probability for q_0, the expected order of interaction,
-#' (ii) epsilon, the base weight for each variable (epsilon=Inf corresponds to uniform sampling),
-#' (iii) alpha, the exponent-learning rate,
-#' (iv) num_passes a numerical parameter only.
+#' \enumerate{
+#' \item{a function giving proposal probability for q_0, the expected order of interaction,}
+#' \item{epsilon, the base weight for each variable (epsilon=Inf corresponds to uniform sampling),}
+#' \item{alpha, the exponent-learning rate,}
+#' \item{num_passes a numerical parameter only.}
+#' }
 #'
 #' Other proposal notes:
-#'    Expected order q0 is chosen from 1:order with weights coin_pars[[1]](1:order)
-#'    Degree is chosen from q0:degree with weights (1:(degree-q0+1))^(-degree_penalty) and a random partition is created (see helper function).
+#'    Expected order q0 is chosen from 1:order with weights `coin_pars[[1]](1:order)`
+#'    Degree is chosen from q0:degree with weights `(1:(degree-q0+1))^(-degree_penalty)` and a random partition is created (see helper function).
 #'
 #' Two types of change steps are possible (and equally likely)
 #'    A re-ordering of the degrees
@@ -39,7 +42,7 @@
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- adaptive_khaos(X, y)
 #' @export
 adaptive_khaos <-function(X, y,
@@ -49,6 +52,7 @@ adaptive_khaos <-function(X, y,
                           thin=1,
                           max_basis=1000,
                           tau2=10^5,
+                          s2_lower=0,
                           g1=0,g2=0,
                           h1=4,h2=40/length(y),
                           move_probs=rep(1/3, 3),
@@ -56,6 +60,16 @@ adaptive_khaos <-function(X, y,
                           degree_penalty=0,
                           verbose=TRUE
 ){
+  # Define a safer solve
+  # Note: Under iid uniform X, columns of B are uncorrelated.
+  #       So the tolerance should be pretty safe unless there's an
+  #       extreme amount of correlation in X.
+  safe_solve <- function(A, tol = 1e-9) {
+    rc <- rcond(A)
+    if (is.na(rc) || rc < tol) return(FALSE)
+    solve(A)
+  }
+
   n<-length(y)
   p<-ncol(X)
   ssy<-sum(y^2)
@@ -81,7 +95,7 @@ adaptive_khaos <-function(X, y,
 
   # initialize
   nbasis[1]<-0
-  s2[1]<-var(y)
+  s2[1]<-stats::var(y)
   lam[1]<-1
   B.curr<-matrix(rep(1,n)) # matrix of current basis functions, so that yhat = B.curr %*% beta
   BtB.curr <- crossprod(B.curr)
@@ -129,7 +143,7 @@ adaptive_khaos <-function(X, y,
       chi.cand <- 0
       delayed_reject_term <- 0
       while(sum(chi.cand) == 0 | sum(chi.cand) > order){
-        chi.cand  <- rbinom(p, 1, wts)
+        chi.cand  <- stats::rbinom(p, 1, wts)
         vars.cand <- which(chi.cand == 1)
         res <- 0
         for(jj in 1:order){
@@ -139,7 +153,7 @@ adaptive_khaos <-function(X, y,
         }
         delayed_reject_term <- delayed_reject_term + log(res)
       }
-      vars.cand <- which(chi.cand == 1)
+      #vars.cand <- which(chi.cand == 1)
       nint.cand <- length(vars.cand)
       d_probs <- seq_along(nint.cand:degree)^(-degree_penalty)
       d_probs <- d_probs / sum(d_probs)
@@ -147,16 +161,18 @@ adaptive_khaos <-function(X, y,
       degs.cand <- random_partition(dtot.cand, nint.cand)
       #nint.cand<-sample(order,1) # sample degree of interaction for new basis function (different from DMS)
       #vars.cand<-sample(p,nint.cand,replace = F) # variables to use in new basis function (different from DMS)
-      #knots.cand<-runif(nint.cand) # sample knots for new basis function
+      #knots.cand<-stats::runif(nint.cand) # sample knots for new basis function
       #signs.cand<-sample(c(-1,1),nint.cand,replace = T) # signs for new basis function
 
       # KR:
+
+
       if(nint.cand == 0) stop("Why is nint.cand zero? This shouldn't be possible.")
       basis.cand <- make_basis(vars.cand, degs.cand, X)
       B.cand <- cbind(B.curr,basis.cand) # add the new basis function to the basis functions we already have
       BtB.cand <- crossprod(B.cand)
       BtBi.cand <- tryCatch({
-        solve(BtB.cand)
+        safe_solve(BtB.cand)
       }, error = function(e) {
         FALSE
       })
@@ -194,7 +210,7 @@ adaptive_khaos <-function(X, y,
         alpha <- llik.alpha + lprior.alpha + lprop.alpha
 
 
-        if(log(runif(1))<alpha){ # accept, update current values
+        if(log(stats::runif(1))<alpha){ # accept, update current values
           B.curr<-B.cand
           BtB.curr <- BtB.cand
           BtBi.curr <- BtBi.cand
@@ -211,6 +227,7 @@ adaptive_khaos <-function(X, y,
           count_accept[1] <- count_accept[1] + 1
         }
       }
+      # Auto reject birth
       count_propose[1] <- count_propose[1] + 1
 
     } else if(move.type=='death'){
@@ -220,7 +237,7 @@ adaptive_khaos <-function(X, y,
       # There really shouldn't be any issues here,
       # but for some reason we still need tryCatch
       BtBi.cand <- tryCatch({
-        solve(BtB.cand)
+        safe_solve(BtB.cand)
       }, error = function(e) {
         FALSE
       })
@@ -260,7 +277,7 @@ adaptive_khaos <-function(X, y,
             mu_chi   <- sum(wts.j)
             sig_chi  <- sqrt(sum(wts.j*(1-wts.j)))
             term_q_j <- log(J_probs[jj]) - log(Hjs) +
-                        pnorm(order+1/2,mu_chi,sig_chi,lower.tail=FALSE,log.p=TRUE)
+                        stats::pnorm(order+1/2,mu_chi,sig_chi,lower.tail=FALSE,log.p=TRUE)
           }
           proposal_nint_q <- proposal_nint_q + exp(term_q_j)
         }
@@ -293,7 +310,7 @@ adaptive_khaos <-function(X, y,
 
         alpha <- llik.alpha + lprior.alpha + lprop.alpha
 
-        if(log(runif(1))<alpha){ # accept, update
+        if(log(stats::runif(1))<alpha){ # accept, update
           B.curr<-B.cand
           BtB.curr <- BtB.cand
           BtBi.curr <- BtBi.cand
@@ -320,10 +337,15 @@ adaptive_khaos <-function(X, y,
     } else{ # KR: mutate
 
       # Adapt which mutation should get used.
-      mutate_eps <- 0.1 # hard coded
-      success_rates <- count_accept[3:4]/(0.01 + count_propose[3:4])
-      mutate_prob <- mutate_eps + (1 - 2*mutate_eps) * pnorm(-diff(pmin(5,pmax(-5,qnorm(success_rates)))))
-      mutate_type <- rbinom(1, 1, mutate_prob)
+      if(p <= 3){
+        # Second mutation type isn't really needed for small p
+        mutate_type <- 1
+      }else{
+        mutate_eps <- 0.1 # hard coded (worst case probability for either type)
+        success_rates <- count_accept[3:4]/(0.01 + count_propose[3:4])
+        mutate_prob <- mutate_eps + (1 - 2*mutate_eps) * stats::pnorm(-diff(pmin(5,pmax(-5,stats::qnorm(success_rates)))))
+        mutate_type <- stats::rbinom(1, 1, mutate_prob)
+      }
 
       # MUTATION TYPE 1: Re-sample the degrees
       if(mutate_type == 1){
@@ -347,7 +369,7 @@ adaptive_khaos <-function(X, y,
         B.cand[,tochange+1] <- basis # replace with our new basis function (+1 for intercept)
         BtB.cand <- crossprod(B.cand)
         BtBi.cand <- tryCatch({
-          solve(BtB.cand)
+          safe_solve(BtB.cand)
         }, error = function(e) {
           FALSE
         })
@@ -369,7 +391,7 @@ adaptive_khaos <-function(X, y,
           # Uniform priors + no dimension change <=> no term for the prior
           alpha <- llik.alpha + lprop.alpha
 
-          if(log(runif(1))<alpha){ # accept, update
+          if(log(stats::runif(1))<alpha){ # accept, update
             B.curr<-B.cand
             BtB.curr <- BtB.cand
             BtBi.curr <- BtBi.cand
@@ -423,7 +445,7 @@ adaptive_khaos <-function(X, y,
         B.cand[,tochange+1] <- basis # replace with our new basis function (+1 for intercept)
         BtB.cand <- crossprod(B.cand)
         BtBi.cand <- tryCatch({
-          solve(BtB.cand)
+          safe_solve(BtB.cand)
         }, error = function(e) {
           FALSE
         })
@@ -444,7 +466,7 @@ adaptive_khaos <-function(X, y,
           # Uniform priors + no dimension change <=> no term for the prior
           alpha <- llik.alpha + lprop.alpha
 
-          if(log(runif(1))<alpha){ # accept, update
+          if(log(stats::runif(1))<alpha){ # accept, update
             B.curr<-B.cand
             BtB.curr <- BtB.cand
             BtBi.curr <- BtBi.cand
@@ -477,13 +499,14 @@ adaptive_khaos <-function(X, y,
     yhat_curr <- B.curr %*% beta_curr
     resid <- y-yhat_curr
 
-    s2[i] <- 1/rgamma(1, n/2+g1, rate = g2+.5*sum(resid^2))
-    lam[i] <- rgamma(1,h1+nbasis[i],h2+1)                                               # update lambda
+
+    s2[i] <- max(s2_lower, 1/stats::rgamma(1, n/2+g1, rate = g2+.5*sum(resid^2)))
+    lam[i] <- stats::rgamma(1,h1+nbasis[i],h2+1)                                               # update lambda
     sum_sq[i] <- sum(resid^2)
 
     # S_cov <- solve(crossprod(B.curr)/s2[i-1]+diag(nbasis[i]+1)/tau2)                    # covariance matrix for beta update
     # beta[i,1:(nbasis[i]+1)] <- sample_mvn(1, S_cov%*%t(B.curr)%*%y/s2[i-1], S_cov)      # update beta
-    # s2[i] <- 1/rgamma(1,n/2+g1,rate=g2+.5*sum((y-B.curr%*%beta[i,1:(nbasis[i]+1)])^2))  # update s2
+    # s2[i] <- 1/stats::rgamma(1,n/2+g1,rate=g2+.5*sum((y-B.curr%*%beta[i,1:(nbasis[i]+1)])^2))  # update s2
     # #if(s2[i] > 1000) browser()
 
     if(verbose & i%%1000 == 0){
@@ -530,17 +553,18 @@ adaptive_khaos <-function(X, y,
 #' @param mcmc.use Which posterior samples should be used for prediction?
 #' @param nugget Logical. Should predictions include error?
 #' @param nreps How many predictions should be taken for each mcmc sample (ignored when \code{nugget = FALSE}).
+#' @param ... Additional arguments to predict
 #' @details Predict function for adaptive_khaos object.
 #' @references Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing sensitivity analysis of Bayesian adaptive spline surfaces." Journal of Statistical Software 94.LA-UR-20-23587 (2020).
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- adaptive_khaos(X, y)
 #' predict(fit)
 #'
 #' @export
-predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FALSE, nreps=1){ # prediction function, gets a prediction for each MCMC iteration
+predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FALSE, nreps=1, ...){ # prediction function, gets a prediction for each MCMC iteration
   if(is.null(newdata)){
     newdata <- object$X
   }
@@ -551,6 +575,7 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
     nreps <- 1
   }
   pred <- matrix(NA, nrow=length(mcmc.use)*nreps, ncol=nrow(newdata))
+  cnt <- 1
   for(i in mcmc.use){
     B <- matrix(1, nrow=nrow(newdata),ncol=object$nbasis[i]+1)
     for(j in 1:object$nbasis[i]){
@@ -561,10 +586,11 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
       mu <- matrix(rep(B %*% beta_curr, each=nreps),
                    nrow=nreps, ncol=nrow(newdata))
       sigma <- sqrt(object$s2[i])
-      pred[(1 + (i-1)*nreps):(i*nreps),] <- mu + rnorm(nrow(newdata)*nreps, 0, sigma)
+      pred[(1 + (cnt-1)*nreps):(cnt*nreps),] <- mu + stats::rnorm(nrow(newdata)*nreps, 0, sigma)
     }else{
-      pred[i,] <- B %*% beta_curr
+      pred[cnt,] <- B %*% beta_curr
     }
+    cnt <- cnt + 1
   }
   return(pred)
 }
@@ -574,38 +600,39 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
 #'
 #' See \code{adaptive_khaos()} for details.
 #'
-#' @param object An object returned by the \code{adaptive_khaos()} function.
+#' @param x An object returned by the \code{adaptive_khaos()} function.
 #' @param ... Additional arguments for plotting
 #' @details Plot function for adaptive_khaos object.
 #' @references Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing sensitivity analysis of Bayesian adaptive spline surfaces." Journal of Statistical Software 94.LA-UR-20-23587 (2020).
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- adaptive_khaos(X, y)
 #' plot(fit)
 #'
 #' @export
-plot.adaptive_khaos <- function(object, ...){
-  opar <- par(no.readonly = TRUE)
-  par(mfrow = c(2, 2), mar = c(4, 4, 2, 1), oma = c(0, 0, 0, 0))
+plot.adaptive_khaos <- function(x, ...){
+  opar <- graphics::par(no.readonly = TRUE)
+  graphics::par(mfrow = c(2, 2), mar = c(4, 4, 2, 1), oma = c(0, 0, 0, 0))
 
-  preds <- predict(object, nugget=TRUE, nreps=10)
+  preds <- stats::predict(x, nugget=TRUE, nreps=10)
   yhat <- apply(preds, 2, mean)
-  ci <- 2*apply(preds, 2, sd)
+  ci <- 2*apply(preds, 2, stats::sd)
 
-  ts.plot(object$nbasis, ylab="nbasis")
-  ts.plot(object$s2, ylab="s2")
-  plot(object$y, yhat, pch=16, xlab="y")
-  segments(x0=y, y0=yhat-ci, y1=yhat+ci, col='orange')
+  stats::ts.plot(x$nbasis, ylab="nbasis")
+  stats::ts.plot(x$s2, ylab="s2")
+  plot(x$y, yhat, pch=16, xlab="y")
+  graphics::segments(x0=x$y, y0=yhat-ci, y1=yhat+ci, col='orange')
 
-  points(object$y, yhat, pch=16)
-  abline(0,1,col='dodgerblue')
-  rr <- y-yhat
-  hist(rr, breaks=ceiling(length(rr)^0.33*diff(range(rr))/(3.5*sd(rr))), freq=F)
-  curve(dnorm(x, mean(rr), sd(rr)), add=TRUE, col='orange')
+  graphics::points(x$y, yhat, pch=16)
+  graphics::abline(0,1,col='dodgerblue')
+  rr <- x$y-yhat
+  graphics::hist(rr, breaks=ceiling(length(rr)^0.33*diff(range(rr))/(3.5*stats::sd(rr))), freq=F)
+  x = seq(range(rr)[1], range(rr)[2], length.out=100)
+  graphics::curve(stats::dnorm(x, mean(rr), stats::sd(rr)), add=TRUE, col='orange')
 
-  par(opar)
+  graphics::par(opar)
   return(NULL)
 }
 

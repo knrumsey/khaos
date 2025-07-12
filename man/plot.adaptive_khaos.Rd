@@ -4,10 +4,10 @@
 \alias{plot.adaptive_khaos}
 \title{Plot Method for class adaptive_khaos}
 \usage{
-\method{plot}{adaptive_khaos}(object, ...)
+\method{plot}{adaptive_khaos}(x, ...)
 }
 \arguments{
-\item{object}{An object returned by the \code{adaptive_khaos()} function.}
+\item{x}{An object returned by the \code{adaptive_khaos()} function.}
 
 \item{...}{Additional arguments for plotting}
 }
@@ -20,7 +20,7 @@ Plot function for adaptive_khaos object.
 \examples{
 X <- lhs::maximinLHS(100, 2)
 f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 fit <- adaptive_khaos(X, y)
 plot(fit)
 

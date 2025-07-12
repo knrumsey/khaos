@@ -14,6 +14,7 @@ adaptive_khaos(
   thin = 1,
   max_basis = 1000,
   tau2 = 10^5,
+  s2_lower = 0,
   g1 = 0,
   g2 = 0,
   h1 = 4,
@@ -25,9 +26,9 @@ adaptive_khaos(
 )
 }
 \arguments{
-\item{X}{A dataframe or matrix of predictors scaled to be between 0 and 1}
+\item{X}{A data frame or matrix of predictors scaled to be between 0 and 1}
 
-\item{y}{a reponse vector}
+\item{y}{a response vector}
 
 \item{degree}{Maximum polynomial degree for each basis function.}
 
@@ -42,6 +43,8 @@ adaptive_khaos(
 \item{max_basis}{Maximum number of basis functions.}
 
 \item{tau2}{Prior variance for coefficients}
+
+\item{s2_lower}{Lower bound on process variance (numerically useful for deterministic functions).}
 
 \item{g1, g2}{Shape/scale parameters for the IG prior on process variance (default is Jefffrey's prior)}
 
@@ -62,14 +65,16 @@ The emulation approach of Francom et al. (2020) for BMARS, modified for polynomi
 Implements the RJMCMC algorithm described by Francom & Sanso (2020) for BMARS, modifying it for polynomial chaos basis functions.
 As an alternative the NKD procedure of Nott et al. (2005), we use a coinflipping procedure to identify useful variables. See writeup (coming soon) for details.
 The coin_pars argument is an ordered list with elements:
-(i) a function giving proposal probability for q_0, the expected order of interaction,
-(ii) epsilon, the base weight for each variable (epsilon=Inf corresponds to uniform sampling),
-(iii) alpha, the exponent-learning rate,
-(iv) num_passes a numerical parameter only.
+\enumerate{
+\item{a function giving proposal probability for q_0, the expected order of interaction,}
+\item{epsilon, the base weight for each variable (epsilon=Inf corresponds to uniform sampling),}
+\item{alpha, the exponent-learning rate,}
+\item{num_passes a numerical parameter only.}
+}
 
 Other proposal notes:
-Expected order q0 is chosen from 1:order with weights coin_pars[\link{1}](1:order)
-Degree is chosen from q0:degree with weights (1:(degree-q0+1))^(-degree_penalty) and a random partition is created (see helper function).
+Expected order q0 is chosen from 1:order with weights \code{coin_pars[[1]](1:order)}
+Degree is chosen from q0:degree with weights \code{(1:(degree-q0+1))^(-degree_penalty)} and a random partition is created (see helper function).
 
 Two types of change steps are possible (and equally likely)
 A re-ordering of the degrees
@@ -78,7 +83,7 @@ A single variable is swapped out with another one
 \examples{
 X <- lhs::maximinLHS(100, 2)
 f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + rnorm(100, 0, 0.1)
+y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 fit <- adaptive_khaos(X, y)
 }
 \references{
