@@ -14,7 +14,7 @@ Authors@R: c(
            email = "jdtuck@sandia.gov", 
            comment = c(ORCID = "0000-0001-8844-2169")))
 Description: Implementation of the sparse Bayesian PCE approach of Shao et al. (2017). The algorithm can be very expensive for a large number of predictors, and so LASSO is used to restrict the number of basis functions which are given consideration. 
-Imports: glmnet
+Imports: glmnet, mvtnorm
 Suggests: knitr, rmarkdown, lhs, testthat (>= 2.1.0)
 License: BSD_3_clause + file LICENSE
 Encoding: UTF-8
