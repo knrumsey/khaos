@@ -531,7 +531,7 @@ adaptive_khaos <-function(X, y,
   lam <- lam[mcmc_iter]
 
 
-  out <- list(B=B.curr,b=bhat,
+  out <- list(B=B.curr,
               vars=vars,degs=degs,
               nint=nint,dtot=dtot,
               nbasis=nbasis,beta=beta,

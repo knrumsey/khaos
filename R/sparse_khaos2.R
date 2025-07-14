@@ -69,7 +69,7 @@ sparse_khaos2 <- function(X, y,
                          control = list(grid_size = 25,
                                         max_basis_enrichment = 4000,
                                         max_basis = 3e5,
-                                        patience = Inf,
+                                        patience = 3,
                                         orth_test = c(1000, 0.01)),
                          verbose=TRUE){
 
@@ -117,7 +117,9 @@ sparse_khaos2 <- function(X, y,
   sig_y <- sd(y)
   y <- (y - mu_y)/sig_y
 
-  res <- sparse_khaos_wrapper2(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, sigma_prior, g_prior, sM, grid_size, patience, enrichment, max_basis_enrichment, evidence, regularize, verbose, NULL)
+  A_curr <- NULL
+
+  res <-    sparse_khaos_wrapper2(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, sigma_prior, g_prior, sM, grid_size, patience, enrichment, max_basis_enrichment, evidence, regularize, verbose, A_curr)
   return(res)
 }
 
@@ -185,7 +187,8 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
   A_set <- rbind(rep(0, p), A_set)
 
   # Get K_trunc
-  rho <- 1e-7
+  #rho <- 1e-7
+  rho <- 0
   K_trunc <- max(which(rr^2 >= rho)) + 1
 
   # Get parameters
@@ -213,7 +216,7 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
   BtB   <- matrix(n, 1, 1)
   BtBi  <- 1 / n
   Bty   <- matrix(sum(y), 1, 1)
-  v     <- Bty / n
+  v     <- Bty #/ n
 
   # Bookkeeping
   best <- list(k=0, lpost=-Inf)
@@ -229,7 +232,7 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
       BtB   <- up$BtB
       BtBi  <- up$BtBi
       Bty   <- rbind(Bty, crossprod(bnew, y))
-      v     <- c(v, crossprod(bnew, y) / n)
+      v     <- c(v, crossprod(bnew, y) ) #/ n)
     }
 
     # Integrate log evidence over g0^2 prior
@@ -243,15 +246,16 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
     logev <- log_mean_exp(logev_vec)
 
 
-    ## get log posterior
-    LPOST[k] <- logev - sM * log(k)            # k includes intercept
+    # Get log posterior
+    LPOST[k] <- logev - sM * log(k) # k includes intercept
 
-    ## ---- update best model if improved ------------
+    # Update best model if improved
     if (LPOST[k] > best$lpost) {
       best$k     <- k
       best$lpost <- LPOST[k]
       best$BtB   <- BtB
       best$BtBi  <- BtBi
+      best$G     <- g_diag[1:k]
       momentum <- 0
     }else{
       momentum <- momentum + 1
@@ -283,21 +287,27 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
     if (over_max_model)
       cat("Note: Maximum degree and order reached. Consider increasing them.\n")
 
-    obj <- list(phi     = phi[, 1:best$k, drop = FALSE],
+    obj <- list(B       = phi[, 1:best$k, drop = FALSE],
+                nbasis  = best$k,
                 vars    = A_set[1:best$k, , drop = FALSE],
-                mu_y    = mu_y,
-                sigma_y = sig_y,
-                lpost   = best$lpost,          # log posterior of best model
+
                 X       = X,
                 y       = y * sig_y + mu_y,
+
+                mu_y    = mu_y,
+                sigma_y = sig_y,
+
                 BtB     = best$BtB,
                 BtBi    = best$BtBi,
+                G       = best$G,
+
                 prior   = list(sigma = sigma_prior,
                                g     = g_prior,
                                sM    = sM),
-                post    = LPOST,
-                best    = best)
-    class(obj) <- "sparse_khaos"
+
+                lpost = LPOST[1:k]) # k = best$k + momentum ?
+
+    class(obj) <- "sparse_khaos2"
     return(obj)
 
   } else {
@@ -317,4 +327,100 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
     return(res)
   }
 
+}
+
+
+
+#' Predict Method for class sparse_khaos2
+#'
+#' See \code{sparse_khaos2()} for details.
+#'
+#' @param object An object returned by the \code{sparse_khaos()} function.
+#' @param newdata A dataframe of the same dimension as the training data.
+#' @param samples How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.
+#' @param ... Additional arguments to predict
+#' @details Predict function for sparse_khaos object.
+#' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
+#' @examples
+#' X <- lhs::maximinLHS(100, 2)
+#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
+#' fit <- sparse_khaos(X, y)
+#' predict(fit)
+#'
+#' @export
+predict.sparse_khaos2 <- function(object, newdata=NULL, samples=1000, ...){
+  if(is.null(newdata)){
+    newdata <- object$X
+  }
+  XX <- newdata
+  n <- nrow(XX)
+  p <- ncol(XX)
+  N_alpha <- nrow(object$vars)
+  phi <- matrix(NA, nrow=n, ncol=N_alpha)
+  for(i in 1:N_alpha){
+    curr <- rep(1, n)
+    for(j in 1:p){
+      curr <- curr * ss_legendre_poly(XX[,j], object$vars[i,j])
+    }
+    phi[,i] <- curr
+  }
+
+  v0_sigma <- object$prior$sigma[1]
+  s0_sigma <- object$prior$sigma[2]
+
+  n0_g <- object$prior$g[1]
+  m0_g <- object$prior$g[2]
+  xi_g <- object$prior$g[3]
+
+  G <- matrix(1, nrow=N_alpha, ncol=N_alpha)
+
+  n0 <- object$prior[1]
+  v0 <- object$prior[2]
+  s0 <- object$prior[3]
+  ntrain <- length(object$y)
+  if(samples){
+    pred <- matrix(NA, nrow=samples, ncol=n)
+    for(i in 1:samples){
+      shape <-  (ntrain+v0-p)/2
+      sigma2 <- 1/stats::rgamma(1, shape, object$s2*shape)
+      a_Sigma <- sigma2 * (object$G * object$BtBi)
+      a_hat <- object$coeff
+      coeff <- stats::rnorm(a_hat, a_hat, diag(a_Sigma))
+      #noise <- sqrt(1/stats::rgamma(1, (n+2)/2, scale=2/(n*object$s2)))
+      y_hat <- phi%*%coeff + stats::rnorm(n, 0, sqrt(sigma2))
+      pred[i,] <- y_hat
+    }
+  }else{
+    pred <- phi%*%object$coeff
+  }
+  pred <- object$mu_y + object$sigma_y * pred
+  return(pred)
+}
+
+#' Plot Method for class sparse_khaos
+#'
+#' See \code{sparse_khaos()} for details.
+#'
+#' @param x An object returned by the \code{sparse_khaos()} function.
+#' @param ... additional arguments passed to \code{plot}
+#' @details Plot function for sparse_khaos object.
+#' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
+#' @examples
+#' X <- lhs::maximinLHS(100, 2)
+#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
+#' fit <- sparse_khaos(X, y)
+#' plot(fit)
+#' @export
+plot.sparse_khaos2 <- function(x, ...){
+  pred <- stats::predict(x, x$X, samples=1000)
+  yhat <- colMeans(pred)
+  plot(x$y, yhat, ...)
+  graphics::abline(0, 1, lwd=2, col='orange')
+
+  ci <- apply(pred, 2, function(yy) stats::quantile(yy, c(0.025, 0.975)))
+  for(i in 1:ncol(ci)){
+    graphics::segments(x$y[i], ci[1,i], x$y[i], ci[2,i])
+  }
 }

@@ -16,7 +16,7 @@ sparse_khaos2(
   enrichment = 2,
   evidence = "auto",
   control = list(grid_size = 25, max_basis_enrichment = 4000, max_basis = 3e+05, patience
-    = Inf, orth_test = c(1000, 0.01)),
+    = 3, orth_test = c(1000, 0.01)),
   verbose = TRUE
 )
 }

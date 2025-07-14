@@ -2,8 +2,11 @@
 
 S3method(plot,adaptive_khaos)
 S3method(plot,sparse_khaos)
+S3method(plot,sparse_khaos2)
 S3method(predict,adaptive_khaos)
 S3method(predict,sparse_khaos)
+S3method(predict,sparse_khaos2)
+S3method(print,sparse_khaos)
 export(adaptive_khaos)
 export(sparse_khaos)
 export(sparse_khaos2)

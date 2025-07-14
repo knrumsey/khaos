@@ -218,10 +218,33 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     #if(next_degree_too_big) cat("Note: max_degree was reached.\n")
     if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
     if(over_max_model) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
-    obj <- list(coeff=best$coeff, s2=best$s2, phi=phi[,1:best$k,drop=FALSE],
-                vars=A_set[1:best$k,,drop=FALSE],
-                mu_y=mu_y, sigma_y=sig_y, KIC=best$KIC, X=X, y=y*sig_y + mu_y,
-                BtB=best$BtB, BtBi=best$BtBi, prior=prior, G=best$G)
+    #obj <- list(coeff=best$coeff, s2=best$s2,
+    #            phi=phi[,1:best$k,drop=FALSE],
+    #            vars=A_set[1:best$k,,drop=FALSE],
+    #            mu_y=mu_y, sigma_y=sig_y, KIC=best$KIC, X=X, y=y*sig_y + mu_y,
+    #            BtB=best$BtB, BtBi=best$BtBi, prior=prior, G=best$G)
+
+
+    obj <- list(B        = phi[, 1:best$k, drop = FALSE],
+                nbasis   = best$k,
+                vars     = A_set[1:best$k, , drop = FALSE],
+                s2       = best$s2,
+                beta_hat = best$coeff,
+
+                X       = X,
+                y       = y * sig_y + mu_y,
+
+                mu_y    = mu_y,
+                sigma_y = sig_y,
+
+                BtB     = best$BtB,
+                BtBi    = best$BtBi,
+                G       = best$G,
+
+                prior   = prior,
+
+                KIC = KIC[1:best$k])
+
     class(obj) <- "sparse_khaos"
   }else{
     d_next <- min(d_curr + d_inc, d_max)
@@ -257,7 +280,7 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
   XX <- newdata
   n <- nrow(XX)
   p <- ncol(XX)
-  N_alpha <- nrow(object$vars)
+  N_alpha <- object$nbasis
   phi <- matrix(NA, nrow=n, ncol=N_alpha)
   for(i in 1:N_alpha){
     curr <- rep(1, n)
@@ -306,7 +329,7 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
 #' plot(fit)
 #' @export
 plot.sparse_khaos <- function(x, ...){
-  pred <- stats::predict(x, x$X, samples=1000)
+  pred <- predict(x, x$X, samples=1000)
   yhat <- colMeans(pred)
   plot(x$y, yhat, ...)
   graphics::abline(0, 1, lwd=2, col='orange')
@@ -317,3 +340,40 @@ plot.sparse_khaos <- function(x, ...){
   }
 }
 
+#' Print Method for class sparse_khaos
+#'
+#' See \code{sparse_khaos()} for details.
+#'
+#' @param x An object returned by the \code{sparse_khaos()} function.
+#' @param ... additional arguments passed to or from other methods.
+#' @details Print function for sparse_khaos object.
+#' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
+#' @examples
+#' X <- lhs::maximinLHS(100, 2)
+#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
+#' fit <- sparse_khaos(X, y)
+#' print(fit)
+#' @export
+print.sparse_khaos <- function(x, ...){
+  vars_used <- colSums(fit$vars)
+  names(vars_used) <- paste("V", seq_along(vars_used), sep="")
+
+  bf_degrees <- table(rowSums(fit$vars))
+  names(bf_degrees) <- paste("deg", seq_along(bf_degrees), sep="")
+
+  bf_orders <- table(rowSums(fit$vars))
+  names(bf_orders) <- paste("ord", seq_along(bf_orders), sep="")
+
+  cat("Fitted model contains", x$nbasis, "basis functions\n\n")
+  cat("KIC =", round(min(x$KIC), 3), "\n\n")
+
+  cat("Variables used:\n")
+  print(vars_used)
+
+  cat("\nBasis function degrees:\n")
+  print(bf_degrees)
+
+  cat("\nBasis function orders:\n")
+  print(bf_orders)
+}
