@@ -90,7 +90,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     rr[i] <- stats::cor(curr, y)
   }
   ord <- rev(order(rr^2))
-  A_set <- A_set[ord,]
+  A_set <- A_set[ord,,drop=FALSE]
   A_deg <- A_deg[ord]
   A_ord <- A_ord[ord]
   phi <- phi[,ord]
@@ -106,7 +106,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     alpha_indx <- which(lfit$beta[,lambda_indx] != 0)
     if(length(alpha_indx) == 0) alpha_indx <- 1
     N_alpha <- length(alpha_indx)
-    A_set <- A_set[alpha_indx,]
+    A_set <- A_set[alpha_indx,,drop=FALSE]
     A_deg <- A_deg[alpha_indx]
     A_ord <- A_ord[alpha_indx]
     phi <- phi[,alpha_indx]
@@ -130,7 +130,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     rr <- rr/max(abs(rr))
   }
   ord <- rev(order(rr^2))
-  A_set <- A_set[ord,]
+  A_set <- A_set[ord,,drop=FALSE]
   A_deg <- A_deg[ord]
   A_ord <- A_ord[ord]
   phi <- phi[,ord]
@@ -285,7 +285,7 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
   for(i in 1:N_alpha){
     curr <- rep(1, n)
     for(j in 1:p){
-      curr <- curr * ss_legendre_poly(XX[,j], object$vars[i,j])
+      curr <- curr * khaos:::ss_legendre_poly(XX[,j], object$vars[i,j])
     }
     phi[,i] <- curr
   }
@@ -300,14 +300,14 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
       shape <-  (ntrain+v0-p)/2
       sigma2 <- 1/stats::rgamma(1, shape, object$s2*shape)
       a_Sigma <- sigma2 * (object$G * object$BtBi)
-      a_hat <- object$coeff
+      a_hat <- object$beta_hat
       coeff <- stats::rnorm(a_hat, a_hat, diag(a_Sigma))
       #noise <- sqrt(1/stats::rgamma(1, (n+2)/2, scale=2/(n*object$s2)))
       y_hat <- phi%*%coeff + stats::rnorm(n, 0, sqrt(sigma2))
       pred[i,] <- y_hat
     }
   }else{
-    pred <- phi%*%object$coeff
+    pred <- phi%*%object$beta_hat
   }
   pred <- object$mu_y + object$sigma_y * pred
   return(pred)

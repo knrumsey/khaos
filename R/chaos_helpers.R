@@ -205,3 +205,190 @@ test_iid_unif <- function(X, Nsims=1000, alpha=0.01){
   }
 }
 
+
+
+rg0sq_laplace_orth <- function(n, a, b, g, n_iter=5, c=0){
+  # Set initial value
+  theta_u_init <- b/a
+
+  # Iterate to find map
+  for(i in seq_len(niter)){
+    Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
+    theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
+  }
+  # Set the MAP
+  m_theta <- theta_u_init
+
+  # Estimate variance (with curvature)
+  s2_theta <- 1 / (2*b/m_theta^3 - a/(2*m_theta^2) - 0.5*sum(g^4/(1 + m_theta*g^2)^2))
+
+  # Get the inverse gamma parameters
+  a_theta <- 2 + m_theta^2 / s2_theta
+  b_theta <- m_theta * (a_theta + c) # c=-1 is moment matching, c=1 matches modes (technically not correct but gives better results in practice?)
+
+  return(1/rgamma(n, a_theta, b_theta))
+}
+
+rg0sq_laplace_full <- function(n, a, b, g, BtB, n_iter=5, n_newtonsteps=3, c=0){
+  M <- length(g)
+
+  # Set initial value
+  theta_u_init <- b/a
+
+  # Iterate to find map
+  for(i in seq_len(niter)){
+    Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
+    theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
+  }
+  # Set the MAP
+  m_theta <- theta_u_init
+
+  # Define first and second derivative functions
+  hh <- function(xx, a, b, M, PinvR){
+    -(a + M/2)/xx + b/xx^2 + 1/(2*xx^2)*sum(diag(PinvR))
+  }
+  hhprime <- function(xx, a, b, M, PinvR, PinvR_sq){
+    (a + M/2)/xx^2 - 2*b/xx^3 - 1/xx^3*sum(diag(PinvR)) + 1/(2*xx^4)*sum(diag(PinvR_sq))
+  }
+
+  # Start newton raphson (log-scale)
+  theta_curr <- m_theta
+  ggt <- tcrossprod(1/g)
+  R0 <- ggt * BtB
+  for(i in 1:n_newtonsteps){
+    P_theta <- (matrix(1, nrow=M, ncol=M) + ggt/theta_curr) * BtB
+    PinvR <- solve(P_theta)%*%R0
+    PinvR_sq <- PinvR %*% PinvR
+
+    h_curr <- hh(theta_curr, a, b, M, PinvR)
+    hp_curr <- hhprime(theta_curr, a, b, M, PinvR, PinvR_sq)
+    #step <- h_curr / (h_curr + theta_curr*hp_curr)
+    #theta_curr <- exp(log(theta_curr) - step)
+
+    step <- h_curr / (theta_curr * hp_curr)
+    theta_curr <- theta_curr * exp(-step)
+  }
+  m_theta <- theta_curr
+
+  # Estimate variance (with curvature)
+  s2_theta <- -1 / hp_curr
+
+  # Get the inverse gamma parameters
+  a_theta <- 2 + m_theta^2 / s2_theta
+  b_theta <- m_theta * (a_theta + c) # c=-1 is moment matching, c=1 matches modes (technically not correct but gives better results in practice?)
+
+  return(1/rgamma(n, a_theta, b_theta))
+}
+
+dgsq_orth <- function(theta, a=1, b=1, gm_sq=NULL){
+  if(is.null(gm_sq)){
+    gm_sq <- 1
+  }
+  M <- length(gm_sq)
+
+  res <- rep(0, length(theta))
+  for(i in seq_along(theta)){
+    term1 <- theta[i]^(-a-M/2)
+    term2 <- exp(-b/theta[i])
+    term3 <- sqrt(prod(theta[i]*gm_sq/(1+theta[i]*gm_sq)))
+    if(term2 > 0){
+      res[i] <- term1 * term2 * term3
+    }
+  }
+  return(res)
+}
+
+dgsq_full <- function(theta, a=1, b=1, gm=NULL, BtB=NULL){
+  if(is.null(gm)){
+    gm <- rep(1, nrow(BtB))
+  }
+  M <- length(gm)
+
+  res <- rep(0, length(theta))
+  for(i in seq_along(theta)){
+    term1 <- theta[i]^(-a-M/2)
+    term2 <- exp(-b/theta[i])
+
+    G <- matrix(1, nrow=M, ncol=M) + tcrossprod(1/g) / theta[i]
+    Sigma_inv <- G * BtB
+    term3 <- det(Sigma_inv)^(-0.5)
+    if(term2 > 0){
+      res[i] <- term1 * term2 * term3
+    }
+  }
+  return(res)
+}
+
+rg0sq_laplace_orth <- function(n, a, b, g, n_iter=5, c=0){
+  # Set initial value
+  theta_u_init <- b/a
+
+  # Iterate to find map
+  for(i in seq_len(niter)){
+    Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
+    theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
+  }
+  # Set the MAP
+  m_theta <- theta_u_init
+
+  # Estimate variance (with curvature)
+  s2_theta <- 1 / (2*b/m_theta^3 - a/(2*m_theta^2) - 0.5*sum(g^4/(1 + m_theta*g^2)^2))
+
+  # Get the inverse gamma parameters
+  a_theta <- 2 + m_theta^2 / s2_theta
+  b_theta <- m_theta * (a_theta + c) # c=-1 is moment matching, c=1 matches modes (technically not correct but gives better results in practice?)
+
+  return(1/rgamma(n, a_theta, b_theta))
+}
+
+rg0sq_laplace_full <- function(n, a, b, g, BtB, n_iter=5, n_newtonsteps=3, c=0){
+  M <- length(g)
+
+  # Set initial value
+  theta_u_init <- b/a
+
+  # Iterate to find map
+  for(i in seq_len(niter)){
+    Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
+    theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
+  }
+  # Set the MAP
+  m_theta <- theta_u_init
+
+  # Define first and second derivative functions
+  hh <- function(xx, a, b, M, PinvR){
+    -(a + M/2)/xx + b/xx^2 + 1/(2*xx^2)*sum(diag(PinvR))
+  }
+  hhprime <- function(xx, a, b, M, PinvR, PinvR_sq){
+    (a + M/2)/xx^2 - 2*b/xx^3 - 1/xx^3*sum(diag(PinvR)) + 1/(2*xx^4)*sum(diag(PinvR_sq))
+  }
+
+  # Start newton raphson (log-scale)
+  theta_curr <- m_theta
+  ggt <- tcrossprod(1/g)
+  R0 <- ggt * BtB
+  for(i in 1:n_newtonsteps){
+    P_theta <- (matrix(1, nrow=M, ncol=M) + ggt/theta_curr) * BtB
+    PinvR <- solve(P_theta)%*%R0
+    PinvR_sq <- PinvR %*% PinvR
+
+    h_curr <- hh(theta_curr, a, b, M, PinvR)
+    hp_curr <- hhprime(theta_curr, a, b, M, PinvR, PinvR_sq)
+    #step <- h_curr / (h_curr + theta_curr*hp_curr)
+    #theta_curr <- exp(log(theta_curr) - step)
+
+    step <- h_curr / (theta_curr * hp_curr)
+    theta_curr <- theta_curr * exp(-step)
+  }
+  m_theta <- theta_curr
+
+  # Estimate variance (with curvature)
+  s2_theta <- -1 / hp_curr
+
+  # Get the inverse gamma parameters
+  a_theta <- 2 + m_theta^2 / s2_theta
+  b_theta <- m_theta * (a_theta + c) # c=-1 is moment matching, c=1 matches modes (technically not correct but gives better results in practice?)
+
+  return(1/rgamma(n, a_theta, b_theta))
+}
+

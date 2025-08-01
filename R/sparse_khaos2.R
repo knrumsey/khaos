@@ -245,7 +245,6 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
       numeric(1))
     logev <- log_mean_exp(logev_vec)
 
-
     # Get log posterior
     LPOST[k] <- logev - sM * log(k) # k includes intercept
 
@@ -293,6 +292,7 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
 
                 X       = X,
                 y       = y * sig_y + mu_y,
+                z       = y,
 
                 mu_y    = mu_y,
                 sigma_y = sig_y,
@@ -304,6 +304,9 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
                 prior   = list(sigma = sigma_prior,
                                g     = g_prior,
                                sM    = sM),
+
+                evidence = evidence,
+                enrichment = enrichment,
 
                 lpost = LPOST[1:k]) # k = best$k + momentum ?
 
@@ -328,8 +331,6 @@ sparse_khaos_wrapper2 <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_in
   }
 
 }
-
-
 
 #' Predict Method for class sparse_khaos2
 #'
@@ -356,40 +357,74 @@ predict.sparse_khaos2 <- function(object, newdata=NULL, samples=1000, ...){
   XX <- newdata
   n <- nrow(XX)
   p <- ncol(XX)
-  N_alpha <- nrow(object$vars)
-  phi <- matrix(NA, nrow=n, ncol=N_alpha)
-  for(i in 1:N_alpha){
+  M <- nrow(object$vars)
+  Bnew <- matrix(NA, nrow=n, ncol=M)
+  for(i in 1:M){
     curr <- rep(1, n)
     for(j in 1:p){
       curr <- curr * ss_legendre_poly(XX[,j], object$vars[i,j])
     }
-    phi[,i] <- curr
+    Bnew[,i] <- curr
   }
 
   v0_sigma <- object$prior$sigma[1]
   s0_sigma <- object$prior$sigma[2]
 
+  a_sigma <- v0_sigma / 2
+  b_sigma <- v0_sigma * s0_sigma^2 / 2
+
   n0_g <- object$prior$g[1]
   m0_g <- object$prior$g[2]
   xi_g <- object$prior$g[3]
 
-  G <- matrix(1, nrow=N_alpha, ncol=N_alpha)
+  a_g   <- n0_g / 2
+  b_g   <- n0_g * m0_g / 2
 
-  n0 <- object$prior[1]
-  v0 <- object$prior[2]
-  s0 <- object$prior[3]
   ntrain <- length(object$y)
   if(samples){
     pred <- matrix(NA, nrow=samples, ncol=n)
+
+    # Sample g0^2
+    if(object$evidence == "full"){
+      g0_sq <- rg0sq_laplace_full(samples,
+                                  a_g, b_g,
+                                  object$G, object$BtB)
+    }else{
+      g0_sq <- rg0sq_laplace_orth(samples,
+                                  a_g, b_g,
+                                  object$G)
+    }
+    yty <- sum(object$z^2)
+    Bty <- crossprod(object$B, object$z)
     for(i in 1:samples){
-      shape <-  (ntrain+v0-p)/2
-      sigma2 <- 1/stats::rgamma(1, shape, object$s2*shape)
-      a_Sigma <- sigma2 * (object$G * object$BtBi)
-      a_hat <- object$coeff
-      coeff <- stats::rnorm(a_hat, a_hat, diag(a_Sigma))
-      #noise <- sqrt(1/stats::rgamma(1, (n+2)/2, scale=2/(n*object$s2)))
-      y_hat <- phi%*%coeff + stats::rnorm(n, 0, sqrt(sigma2))
+      # Form Sigma
+      g0_sq_curr <- g0_sq[i]
+      G <- matrix(1, nrow=M, ncol=M) + tcrossprod(object$G) / g0_sq_curr
+      Sigma_i <- G * object$BtB
+      Sigma <- solve(Sigma_i) # invert Sigma_i (want to eliminate this line)
+      L_i <- chol(Sigma_i)    # cholesky factor of Sigma_i
+
+      # Sample sigma_sq
+      shape <-  (2*a_sigma + ntrain)/2
+      #rate1 <- b_sigma + (yty - t(Bty)%*%Sigma%*%Bty) # How do we use L_i here?
+      quad <- sum(backsolve(L_i, Bty, transpose=TRUE)^2)
+      rate <- pmax(1e-16, b_sigma + (yty - quad))
+      sigma2 <- 1/stats::rgamma(1, shape, rate)
+
+      # Sample beta
+      v_mu <- backsolve(L_i, Bty, transpose=TRUE)
+      mu <- backsolve(L_i, v_mu)  # This gives Sigma %*% Bty
+
+      z <- rnorm(M)
+      v <- backsolve(L_i, z, transpose=TRUE)  # Solve L^T v = z
+      w <- backsolve(L_i, v)                  # Solve L w = v
+      beta <- mu + sqrt(sigma2) * w
+
+      # Get preds
+      coeff <- beta
+      y_hat <- Bnew%*%coeff + stats::rnorm(n, 0, sqrt(sigma2))
       pred[i,] <- y_hat
+      # END OLD CODE
     }
   }else{
     pred <- phi%*%object$coeff

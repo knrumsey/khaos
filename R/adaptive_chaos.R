@@ -520,10 +520,10 @@ adaptive_khaos <-function(X, y,
   basis_high <- 1:max(nbasis)
   inter_high <- 1:max(nint, na.rm=TRUE)
 
-  vars <- vars[mcmc_iter, basis_high, inter_high]
-  degs <- degs[mcmc_iter, basis_high, inter_high]
-  nint <- nint[mcmc_iter, basis_high]
-  dtot <- dtot[mcmc_iter, basis_high]
+  vars <- vars[mcmc_iter, basis_high, inter_high, drop=FALSE]
+  degs <- degs[mcmc_iter, basis_high, inter_high, drop=FALSE]
+  nint <- nint[mcmc_iter, basis_high, drop=FALSE]
+  dtot <- dtot[mcmc_iter, basis_high, drop=FALSE]
 
   beta <- beta[mcmc_iter, 1:(1+max(nbasis))]
   nbasis <- nbasis[mcmc_iter]
@@ -578,7 +578,7 @@ predict.adaptive_khaos<-function(object, newdata=NULL, mcmc.use=NULL, nugget=FAL
   cnt <- 1
   for(i in mcmc.use){
     B <- matrix(1, nrow=nrow(newdata),ncol=object$nbasis[i]+1)
-    for(j in 1:object$nbasis[i]){
+    for(j in seq_len(object$nbasis[i])){
       B[,j+1] <- make_basis(object$vars[i,j,1:object$nint[i,j]], object$degs[i,j,1:object$nint[i,j]], newdata)
     }
     beta_curr <- object$beta[i,1:(object$nbasis[i]+1)]

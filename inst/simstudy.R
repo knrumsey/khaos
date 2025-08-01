@@ -209,3 +209,16 @@ fit <- khaos::adaptive_khaos(X, y, degree=10, order=3)
 plot(fit)
 
 
+fit_skhaos <- function(X, y){
+  fit
+}
+
+
+
+
+
+
+
+
+
+
