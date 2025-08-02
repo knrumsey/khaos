@@ -209,16 +209,51 @@ fit <- khaos::adaptive_khaos(X, y, degree=10, order=3)
 plot(fit)
 
 
-fit_skhaos <- function(X, y){
-  fit
+
+
+library(conforest)
+fit <- rfok(X, y)
+yhat <- apply(predict(fit, X), 1, mean)
+
+library(gplite)
+
+fit_fitc <- function(X, y){
+  n <- length(y)
+  ni <- 4*floor(sqrt(n))
+  ni <- max(5, ni)
+  ni <- min(ni, 100, round(n/2))
+  gp <- gp_init(method=method_fitc(num_inducing = ni))
+  gp <- gp_optim(gp, X, y, restarts=2)
 }
 
+pred_fitc <- function(obj, Xt){
+  t_pred <- gp_draw(obj, Xt, draws=1000)
+  pred <- t(t_pred)
+  return(pred)
+}
 
+fit_rffgp <- function(X, y){
+  n <- length(y)
+  nb <- 8*floor(sqrt(n))
+  nb <- max(10, nb)
+  nb <- min(400, nb)
+  gp <- gp_init(method=method_rf(num_basis=nb))
+  gp <- gp_optim(gp, X, y, restarts=2)
+}
 
+pred_rffgp <- function(obj, Xt){
+  t_pred <- gp_draw(obj, Xt, draws=1000)
+  pred <- t(t_pred)
+  return(pred)
+}
 
+fit1 <- fit_fitc(X3, y3)
+pred1 <- pred_fitc(fit1, X3)
+plot(y3, colMeans(pred1))
+abline(0,1,col='red')
 
-
-
-
-
+fit2 <- fit_rffgp(X3, y3)
+pred2 <- pred_rffgp(fit2, X3)
+plot(y3, colMeans(pred2))
+abline(0,1,col='red')
 

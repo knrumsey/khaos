@@ -95,7 +95,7 @@ adaptive_khaos <-function(X, y,
 
   # initialize
   nbasis[1]<-0
-  s2[1]<-stats::var(y)
+  s2[1]<-stats::var(y) + 1e-9
   lam[1]<-1
   B.curr<-matrix(rep(1,n)) # matrix of current basis functions, so that yhat = B.curr %*% beta
   BtB.curr <- crossprod(B.curr)

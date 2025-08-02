@@ -213,8 +213,9 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
   over_max_order      <- (o_curr >= o_max)
   found_final_model   <- (!at_capacity_degree | over_max_degree) & (!at_capacity_order | over_max_order) # Neither degree nor order is at capacity (unless they're at the max)
   next_basis_too_big  <- (A_size(p, d_curr+d_inc, o_curr+o_inc) > max_basis)
+  order_bigger_than_p <- (o_curr + o_inc > p) & (d_inc == 0)
   over_max_model      <- over_max_degree & over_max_order
-  if(found_final_model | next_basis_too_big | over_max_model){
+  if(found_final_model | next_basis_too_big | over_max_model | order_bigger_than_p){
     #if(next_degree_too_big) cat("Note: max_degree was reached.\n")
     if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
     if(over_max_model) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
@@ -356,13 +357,13 @@ plot.sparse_khaos <- function(x, ...){
 #' print(fit)
 #' @export
 print.sparse_khaos <- function(x, ...){
-  vars_used <- colSums(fit$vars)
+  vars_used <- colSums(x$vars)
   names(vars_used) <- paste("V", seq_along(vars_used), sep="")
 
-  bf_degrees <- table(rowSums(fit$vars))
+  bf_degrees <- table(rowSums(x$vars))
   names(bf_degrees) <- paste("deg", seq_along(bf_degrees), sep="")
 
-  bf_orders <- table(rowSums(fit$vars))
+  bf_orders <- table(rowSums(x$vars))
   names(bf_orders) <- paste("ord", seq_along(bf_orders), sep="")
 
   cat("Fitted model contains", x$nbasis, "basis functions\n\n")
