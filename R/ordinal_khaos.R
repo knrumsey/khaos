@@ -91,11 +91,9 @@ ordinal_khaos <-function(X, y,
   z <- thresh_curr[y] + rbeta(n, 5, 5) - 1
   ssz<-sum(z^2)
   thresh_curr[K] <- Inf
-  # Define function for getting back y
-  get_y <- function(zz){
-    unlist(lapply(zz, function(zzz) which(zzz <= thresh_curr)[1]))
-  }
 
+  s2z <- rep(NA, nmcmc)
+  s2z[1] <- var(z)
 
   #KR: generalized harmonic number
   J_probs <- coin_pars[[1]](1:order)
@@ -108,7 +106,7 @@ ordinal_khaos <-function(X, y,
   nint<-dtot<-matrix(nrow=nmcmc,ncol=max_basis) # order of interaction J, and total degree, again filling will be ragged
   thresh_mat <- matrix(nrow=nmcmc, ncol=K-1)
   beta<-matrix(nrow=nmcmc,ncol=max_basis+1) # +1 for intercept, again filling will be ragged
-  lam<-nbasis<-rep(NA,nmcmc) # error variance, poisson hyperprior, and number of basis functions
+  lam<-nbasis<- rep(NA,nmcmc) # error variance, poisson hyperprior, and number of basis functions
   #sum_sq <- rep(NA, nmcmc)
   eta_vec <- rep(0, p) # KR: count how many times each variable is added to the model
 
@@ -530,6 +528,7 @@ ordinal_khaos <-function(X, y,
       z[j] <- ez + qnorm(u)
     }
     ssz <- sum(z^2)
+    s2z[i] <- (ssz - sum(z)^2/n) / (n-1)
 
     # SAMPLE THRESHOLDS
     for(k in 2:(K-1)){
@@ -560,6 +559,7 @@ ordinal_khaos <-function(X, y,
 
   beta <- beta[mcmc_iter, 1:(1+max(nbasis))]
   nbasis <- nbasis[mcmc_iter]
+  s2z <- s2z[mcmc_iter]
   #s2 <- s2[mcmc_iter]
   lam <- lam[mcmc_iter]
   thresh_mat <- thresh_mat[mcmc_iter,,drop=FALSE]
@@ -571,6 +571,7 @@ ordinal_khaos <-function(X, y,
               nbasis=nbasis,beta=beta,
               lam=lam,
               eta=eta_vec,
+              s2z=s2z,
               count_accept=count_accept,
               count_propose=count_propose,
               X=X, y=y)
