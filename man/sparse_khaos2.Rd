@@ -10,7 +10,7 @@ sparse_khaos2(
   degree = c(2, 2, 16),
   order = c(1, 1, 4),
   sigma_prior = c(1, 1),
-  g_prior = c(1, 1, 1),
+  g_prior = c(1, 1000, 1),
   sM = 0,
   regularize = TRUE,
   enrichment = 2,

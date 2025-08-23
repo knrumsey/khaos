@@ -212,7 +212,7 @@ rg0sq_laplace_orth <- function(n, a, b, g, n_iter=5, c=0){
   theta_u_init <- b/a
 
   # Iterate to find map
-  for(i in seq_len(niter)){
+  for(i in seq_len(n_iter)){
     Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
     theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
   }
@@ -236,7 +236,7 @@ rg0sq_laplace_full <- function(n, a, b, g, BtB, n_iter=5, n_newtonsteps=3, c=0){
   theta_u_init <- b/a
 
   # Iterate to find map
-  for(i in seq_len(niter)){
+  for(i in seq_len(n_iter)){
     Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
     theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
   }
@@ -309,7 +309,7 @@ dgsq_full <- function(theta, a=1, b=1, gm=NULL, BtB=NULL){
     term1 <- theta[i]^(-a-M/2)
     term2 <- exp(-b/theta[i])
 
-    G <- matrix(1, nrow=M, ncol=M) + tcrossprod(1/g) / theta[i]
+    G <- matrix(1, nrow=M, ncol=M) + tcrossprod(1/gm) / theta[i]
     Sigma_inv <- G * BtB
     term3 <- det(Sigma_inv)^(-0.5)
     if(term2 > 0){
@@ -324,7 +324,7 @@ rg0sq_laplace_orth <- function(n, a, b, g, n_iter=5, c=0){
   theta_u_init <- b/a
 
   # Iterate to find map
-  for(i in seq_len(niter)){
+  for(i in seq_len(n_iter)){
     Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
     theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
   }
@@ -338,6 +338,9 @@ rg0sq_laplace_orth <- function(n, a, b, g, n_iter=5, c=0){
   a_theta <- 2 + m_theta^2 / s2_theta
   b_theta <- m_theta * (a_theta + c) # c=-1 is moment matching, c=1 matches modes (technically not correct but gives better results in practice?)
 
+  if(n <= 0){
+    return(list(a=a_theta, b=b_theta))
+  }
   return(1/rgamma(n, a_theta, b_theta))
 }
 
@@ -348,7 +351,7 @@ rg0sq_laplace_full <- function(n, a, b, g, BtB, n_iter=5, n_newtonsteps=3, c=0){
   theta_u_init <- b/a
 
   # Iterate to find map
-  for(i in seq_len(niter)){
+  for(i in seq_len(n_iter)){
     Gl <- 0.5 * sum(g^2/(1 + theta_u_init*g^2))
     theta_u_init <- max(0, (-a + sqrt(a^2 + 4*Gl*b) ) / (2 * Gl))
   }
@@ -389,6 +392,9 @@ rg0sq_laplace_full <- function(n, a, b, g, BtB, n_iter=5, n_newtonsteps=3, c=0){
   a_theta <- 2 + m_theta^2 / s2_theta
   b_theta <- m_theta * (a_theta + c) # c=-1 is moment matching, c=1 matches modes (technically not correct but gives better results in practice?)
 
+  if(n <= 0){
+    return(list(a=a_theta, b=b_theta))
+  }
   return(1/rgamma(n, a_theta, b_theta))
 }
 
