@@ -94,6 +94,8 @@ adaptive_khaos2 <-function(X, y,
     return(chol2inv(chol_A))
   }
 
+  if(max(X) > 1 | min(X) < 0) warning("Inputs are expected to be scaled on (0, 1). Is this intentional?")
+
   n<-length(y)
   p<-ncol(X)
   ssy<-sum(y^2)
