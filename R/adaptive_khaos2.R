@@ -74,6 +74,7 @@ adaptive_khaos2 <-function(X, y,
                           move_probs=rep(1/3, 3),
                           coin_pars=list(function(j) 1/j, 1, 2, 3),
                           degree_penalty=0,
+                          legacy=TRUE,
                           verbose=TRUE
 ){
   # Define a safer solve
@@ -287,6 +288,10 @@ adaptive_khaos2 <-function(X, y,
           nbasis[i]<-nbasis[i-1]+1
           nint[i,nbasis[i]]<-nint.cand
           dtot[i,nbasis[i]]<-dtot.cand
+          if(!legacy){
+            vars[i,nbasis[i],] <- NA
+            degs[i,nbasis[i],] <- NA
+          }
           vars[i,nbasis[i],1:nint.cand]<-vars.cand
           degs[i,nbasis[i],1:nint.cand]<-degs.cand
 
