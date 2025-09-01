@@ -17,6 +17,8 @@
 #' @param move_probs A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.
 #' @param coin_pars A list of control parameters for coinflip proposal
 #' @param degree_penalty Increasing this value encourages lower order polynomial terms (0 is no penalization).
+#' @param legacy Logical. If TRUE, mimics original implementation behavior (from the emulator comparison paper),
+#'        which may retain invalid basis function structures across iterations. Defaults to FALSE.
 #' @param verbose Logical. Should progress information be printed?
 #' @details Implements the RJMCMC algorithm described by Francom & Sanso (2020) for BMARS, modifying it for polynomial chaos basis functions.
 #' As an alternative the NKD procedure of Nott et al. (2005), we use a coinflipping procedure to identify useful variables. See writeup (coming soon) for details.
@@ -58,6 +60,7 @@ adaptive_khaos <-function(X, y,
                           move_probs=rep(1/3, 3),
                           coin_pars=list(function(j) 1/j, 1, 2, 3),
                           degree_penalty=0,
+                          legacy = TRUE,
                           verbose=TRUE
 ){
   # Define a safer solve
@@ -221,6 +224,10 @@ adaptive_khaos <-function(X, y,
           nbasis[i]<-nbasis[i-1]+1
           nint[i,nbasis[i]]<-nint.cand
           dtot[i,nbasis[i]]<-dtot.cand
+          if(!legacy){
+            vars[i,nbasis[i],] <- NA
+            degs[i,nbasis[i],] <- NA
+          }
           vars[i,nbasis[i],1:nint.cand]<-vars.cand
           degs[i,nbasis[i],1:nint.cand]<-degs.cand
 

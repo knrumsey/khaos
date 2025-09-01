@@ -827,7 +827,7 @@ plot.ordinal_khaos <- function(x, ...){
     support[j] <- max(tabj) / nrow(cls_draws)
   }
   # map support to point size
-  cex_j <- 0.6 + 1.4 * (support - min(support)) /
+  cex_j <- 0.2 + 1.6 * (support - min(support)) /
     max(1e-12, (max(support) - min(support)))
 
   plot(jitter(x$y, 0.15), jitter(modal_class, 0.15),
@@ -856,7 +856,7 @@ plot.ordinal_khaos <- function(x, ...){
   ## --- (4) Histogram of latent means f(x) with avg thresholds ---
   f_draws <- predict(x, newdata = x$X, type = "latent", aggregate = FALSE)  # I x n
   f_vec <- as.numeric(f_draws)  # pool across draws & cases
-  hist(f_vec, breaks = "FD", freq = TRUE, col = "grey85", border = "white",
+  hist(f_vec, breaks = "FD", freq = TRUE, col = "grey85", border = "black",
        xlab = "Latent mean f(x)", main = "Latent means with avg thresholds")
 
   # compute posterior-average thresholds

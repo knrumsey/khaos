@@ -56,6 +56,8 @@ crossval_compare <- function(X, y, k = 5, ndraws = 1000) {
     X_test  <- X[test_idx, , drop = FALSE]
     y_test  <- y[test_idx]
 
+    cat("unique in train split:", unique(y_train))
+
     y_fact <- factor(y_train, ordered = TRUE)
 
     # Fit models
@@ -134,16 +136,6 @@ crossval_compare <- function(X, y, k = 5, ndraws = 1000) {
       }
     }
 
-    # Store raw predictive arrays + classes
-    results[[fold]] <- list(
-      truth = y_test,
-      predc_array = predc_array,
-      predc_class = predc_class,
-      predp_array = predp_array,
-      predp_class = predp_class,
-      pred_clm_probs = pred_clm_array,
-      pred_clm_class = pred_clm_class
-    )
 
     # Compute EQWK
     q_khaos <- mean_qwk(predp_samps, y_test)
@@ -156,14 +148,14 @@ crossval_compare <- function(X, y, k = 5, ndraws = 1000) {
     print(eq)
 
 
-    results[[fold]]$eqwk <- eq
+    results[[fold]] <- list(eqwk = eq)
   }
 
   return(results = results)
 }
 
 # === Run analysis ===
-data <- read.csv("~/Desktop/wine+quality/winequality-red.csv", sep = ";")
+data <- read.csv("~/Desktop/wine+quality/winequality-white.csv", sep = ";")
 X <- data[ , -12]
 X01 <- as.matrix(apply(X, 2, BASS:::scale_range), ncol = ncol(X))
 y <- as.numeric(data[, 12]) - 2
@@ -176,7 +168,7 @@ mat10 <- do.call(rbind, lapply(cv_out10, function(l) l$eqwk))
 
 colMeans(mat5)
 colMeans(mat10)
-save(cv_out5, cv_out10, file="data/cv_wine.rda")
+#save(cv_out5, cv_out10, file="data/cv_wine.rda")
 
 
 dat <- duqling::get_emulation_data("Z_machine_max_vel1")
