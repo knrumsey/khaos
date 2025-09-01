@@ -13,8 +13,8 @@ adaptive_khaos2(
   nburn = 9000,
   thin = 1,
   max_basis = 1000,
-  a_g = 0.1,
-  b_g = 0.001,
+  a_g = 0.001,
+  b_g = 1000,
   zeta = 1,
   g2_sample = "mh",
   g2_init = NULL,
@@ -22,10 +22,11 @@ adaptive_khaos2(
   a_sigma = 0,
   b_sigma = 0,
   a_M = 4,
-  b_M = 40/length(y),
+  b_M = 4/length(y),
   move_probs = rep(1/3, 3),
   coin_pars = list(function(j) 1/j, 1, 2, 3),
   degree_penalty = 0,
+  legacy = TRUE,
   verbose = TRUE
 )
 }
@@ -65,6 +66,9 @@ adaptive_khaos2(
 \item{coin_pars}{A list of control parameters for coinflip proposal}
 
 \item{degree_penalty}{Increasing this value encourages lower order polynomial terms (0 is no penalization).}
+
+\item{legacy}{Logical. If TRUE, mimics original implementation behavior (from the emulator comparison paper),
+which may retain invalid basis function structures across iterations. Defaults to FALSE.}
 
 \item{verbose}{Logical. Should progress information be printed?}
 }
