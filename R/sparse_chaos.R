@@ -31,7 +31,14 @@ sparse_khaos <- function(X, y,
     warning("X matrix should have values between 0 and 1.\n")
   }
   if(!is.matrix(X)){
-    X <- matrix(X, ncol=1)
+    if(is.data.frame(X)){
+      X <- as.matrix(X)
+    }else{
+      # Assuming it's a 1-d vector, try to coerce
+      if(is.numeric(X)){
+        X <- matrix(X, ncol=1)
+      }
+    }
   }
   n <- nrow(X)
   p <- ncol(X)
@@ -141,12 +148,11 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
   # Add coefficient column in
   phi <- cbind(rep(1, n), phi)
   A_set <- rbind(rep(0, p), A_set)
-  K_trunc <- max(which(rr^2 >= rho)) + 1
+  K_trunc <- 1 + max(c(0, which(rr^2 >= rho)))
+
   if(verbose){
     if(rho > 0) cat("\t\t Throwing out bases with low partial correlation. ", K_trunc, " remain.\n", sep="")
   }
-  KIC <- rep(NA, K_trunc)
-  KIC[1] <- Inf
 
   # Get g prior info
   Gdiag <- c(1, 1/(1 + A_ord*(A_ord + A_deg - 2)))
@@ -165,43 +171,64 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
   y_mle  <- B%*%a_mle
   s2_mle <- crossprod(y - y_mle)
   a_map  <- a_mle*G1[1]
-  s2_map <- (s2_mle + prior[3]^2 + G2[1]*crossprod(y_mle))/(n + 2 + prior[2] - p)
+  peff   <- 1
+  s2_map <- (s2_mle + prior[3]^2 + G2[1]*crossprod(y_mle))/(n + 2 + prior[2] - 1)
 
-  best <- list(k=0, KIC=Inf, map=NULL)
-  for(k in 2:K_trunc){
-    # Update BtB quantities
-    B    <- phi[,1:k,drop=FALSE]
-    bnew <- phi[,k,drop=FALSE]
-    BtB_curr <- update_BtB(B, BtB, BtBi, bnew)
-    BtB  <- BtB_curr$BtB
-    BtBi <- BtB_curr$BtBi
-    Bty  <- rbind(Bty, sum(bnew*y))
+  # Evaluate KIC for intercept-only model
+  Sigma_prior <- sqrt(diag(BtBi) * Gdiag[1] * prior[3]^2 / prior[2] * n / n0)
+  Sigma_post  <- (G1[1] * BtBi) * as.numeric(s2_mle)
 
-    # Get MAP estimates
-    a_mle  <- BtBi%*%Bty
-    y_mle  <- B%*%a_mle
-    s2_mle <- crossprod(y - y_mle)
-    a_map  <- a_mle*G1[1:k]
-    y_reg  <- B%*%(a_mle * sqrt(G2[1:k]))
-    s2_map <- (s2_mle + prior[3]^2 + crossprod(y_reg))/(n + 2 + prior[2] - p)
+  KIC <- rep(NA, K_trunc)
+  KIC[1] <- -2 * sum(stats::dnorm(y, y_mle, sqrt(s2_map), log = TRUE)) -
+    2 * sum(stats::dnorm(as.numeric(a_map), 0, Sigma_prior, log = TRUE)) -
+    lambda * (peff + 1) * log(2 * pi) + log(det(Sigma_post))
 
-    # Evaluate KIC
-    yhat_k <- B%*%a_map
-    Sigma_prior <- sqrt(diag(BtBi)*Gdiag[1:k]*prior[3]^2/prior[2]*n/n0) # Take the diagonal for simplicity
-    Sigma_post  <- (G1[1:k] * BtBi) * as.numeric(s2_mle) # equivalent to (diag(G1) %*% BtBi)
+  best <- list(
+    k     = 1,
+    KIC   = KIC[1],
+    coeff = a_map,
+    s2    = s2_map,
+    BtB   = BtB,
+    BtBi  = BtBi,
+    G     = Gdiag[1]
+  )
+  if(K_trunc >= 2){
+    for(k in 2:K_trunc){
+      # Update BtB quantities
+      B    <- phi[,1:k,drop=FALSE]
+      bnew <- phi[,k,drop=FALSE]
+      BtB_curr <- update_BtB(B, BtB, BtBi, bnew)
+      BtB  <- BtB_curr$BtB
+      BtBi <- BtB_curr$BtBi
+      Bty  <- rbind(Bty, sum(bnew*y))
 
-    KIC[k] <- -2*sum(stats::dnorm(y, yhat_k, sqrt(s2_map), log=TRUE)) -
-      2*sum(stats::dnorm(as.numeric(a_map), 0, Sigma_prior, log=TRUE)) -
-      lambda*(k+1)*log(2*pi) + log(det(Sigma_post))
+      # Get MAP estimates
+      a_mle  <- BtBi%*%Bty
+      y_mle  <- B%*%a_mle
+      s2_mle <- crossprod(y - y_mle)
+      a_map  <- a_mle*G1[1:k]
+      y_reg  <- B%*%(a_mle * sqrt(G2[1:k]))
+      peff   <- k
+      s2_map <- (s2_mle + prior[3]^2 + crossprod(y_reg))/(n + 2 + prior[2] - peff)
 
-    if(KIC[k] <= best$KIC){
-      best$k     <- k
-      best$KIC   <- KIC[k]
-      best$coeff <- a_map
-      best$s2    <- s2_map
-      best$BtB   <- BtB
-      best$BtBi  <- BtBi
-      best$G     <- Gdiag[1:k]
+      # Evaluate KIC
+      yhat_k <- B%*%a_map
+      Sigma_prior <- sqrt(diag(BtBi)*Gdiag[1:k]*prior[3]^2/prior[2]*n/n0) # Take the diagonal for simplicity
+      Sigma_post  <- (G1[1:k] * BtBi) * as.numeric(s2_mle) # equivalent to (diag(G1) %*% BtBi)
+
+      KIC[k] <- -2*sum(stats::dnorm(y, yhat_k, sqrt(s2_map), log=TRUE)) -
+        2*sum(stats::dnorm(as.numeric(a_map), 0, Sigma_prior, log=TRUE)) -
+        lambda*(k+1)*log(2*pi) + log(det(Sigma_post))
+
+      if(KIC[k] <= best$KIC){
+        best$k     <- k
+        best$KIC   <- KIC[k]
+        best$coeff <- a_map
+        best$s2    <- s2_map
+        best$BtB   <- BtB
+        best$BtBi  <- BtBi
+        best$G     <- Gdiag[1:k]
+      }
     }
   }
 
@@ -263,6 +290,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
 #' @param object An object returned by the \code{sparse_khaos()} function.
 #' @param newdata A dataframe of the same dimension as the training data.
 #' @param samples How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.
+#' @param nugget logical; should predictions include error? If FALSE, predictions will be for mean.
 #' @param ... Additional arguments to predict
 #' @details Predict function for sparse_khaos object.
 #' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
@@ -274,7 +302,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
 #' predict(fit)
 #'
 #' @export
-predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
+predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, nugget=FALSE, ...){
   if(is.null(newdata)){
     newdata <- object$X
   }
@@ -294,17 +322,20 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
   n0 <- object$prior[1]
   v0 <- object$prior[2]
   s0 <- object$prior[3]
+  a_hat <- object$beta_hat
+  peff <- length(a_hat)
   ntrain <- length(object$y)
   if(samples){
     pred <- matrix(NA, nrow=samples, ncol=n)
     for(i in 1:samples){
-      shape <-  (ntrain+v0-p)/2
-      sigma2 <- 1/stats::rgamma(1, shape, object$s2*shape)
+      shape <-  (ntrain + v0 - peff)/2
+      sigma2 <- 1/stats::rgamma(1, shape=shape, rate=object$s2*shape)
       a_Sigma <- sigma2 * (object$G * object$BtBi)
-      a_hat <- object$beta_hat
-      coeff <- stats::rnorm(a_hat, a_hat, diag(a_Sigma))
-      #noise <- sqrt(1/stats::rgamma(1, (n+2)/2, scale=2/(n*object$s2)))
-      y_hat <- phi%*%coeff + stats::rnorm(n, 0, sqrt(sigma2))
+      coeff <- stats::rnorm(peff, a_hat, sqrt(diag(a_Sigma)))
+      y_hat <- phi%*%coeff
+      if(nugget){
+        y_hat <- y_hat + stats::rnorm(n, 0, sqrt(sigma2))
+      }
       pred[i,] <- y_hat
     }
   }else{
@@ -330,14 +361,23 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, ...){
 #' plot(fit)
 #' @export
 plot.sparse_khaos <- function(x, ...){
-  pred <- predict(x, x$X, samples=1000)
+  dots <- list(...)
+
+  nugget <- if("nugget" %in% names(dots)) dots$nugget else FALSE
+  samples <- if("samples" %in% names(dots)) dots$samples else 1000
+
+  dots$nugget <- NULL
+  dots$samples <- NULL
+
+  pred <- predict(x, x$X, samples = samples, nugget = nugget)
   yhat <- colMeans(pred)
-  plot(x$y, yhat, ...)
-  graphics::abline(0, 1, lwd=2, col='orange')
+
+  do.call(graphics::plot, c(list(x = x$y, y = yhat, xlab="observed", ylab="predicted"), dots))
+  graphics::abline(0, 1, lwd = 2, col = "orange")
 
   ci <- apply(pred, 2, function(yy) stats::quantile(yy, c(0.025, 0.975)))
   for(i in 1:ncol(ci)){
-    graphics::segments(x$y[i], ci[1,i], x$y[i], ci[2,i])
+    graphics::segments(x$y[i], ci[1, i], x$y[i], ci[2, i])
   }
 }
 

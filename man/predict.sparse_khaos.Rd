@@ -4,7 +4,7 @@
 \alias{predict.sparse_khaos}
 \title{Predict Method for class sparse_khaos}
 \usage{
-\method{predict}{sparse_khaos}(object, newdata = NULL, samples = 1000, ...)
+\method{predict}{sparse_khaos}(object, newdata = NULL, samples = 1000, nugget = FALSE, ...)
 }
 \arguments{
 \item{object}{An object returned by the \code{sparse_khaos()} function.}
@@ -12,6 +12,8 @@
 \item{newdata}{A dataframe of the same dimension as the training data.}
 
 \item{samples}{How many posterior samples should be taken at each test point? If 0 or FALSE, then the MAP estimate is returned.}
+
+\item{nugget}{logical; should predictions include error? If FALSE, predictions will be for mean.}
 
 \item{...}{Additional arguments to predict}
 }
