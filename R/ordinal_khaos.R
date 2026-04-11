@@ -113,7 +113,6 @@ ordinal_khaos <-function(X, y,
 
   s2z <- rep(NA, nmcmc)
   s2z[1] <- var(z)
-  thresh_mat[1,] <- thresh_curr[1:(K-1)]
 
   #KR: generalized harmonic number
   J_probs <- coin_pars[[1]](1:order)
@@ -137,6 +136,7 @@ ordinal_khaos <-function(X, y,
   B.curr<-matrix(rep(1,n)) # matrix of current basis functions, so that yhat = B.curr %*% beta
   BtB.curr <- crossprod(B.curr)
   BtBi.curr <- solve(BtB.curr)
+  thresh_mat[1,] <- thresh_curr[1:(K-1)]
 
   Vinv.curr<-crossprod(B.curr)+1/tau2 # V^(-1) from DMS
   bhat<-1
@@ -434,7 +434,7 @@ ordinal_khaos <-function(X, y,
             vars[i,tochange,1:nint[i-1,tochange]] <- vars.curr # no change
             degs[i,tochange,1:nint[i-1,tochange]] <- degs.cand
             nint[i,tochange] <- nint.curr                      # no change
-            dtot[i,tochange] <- dtot.curr
+            dtot[i,tochange] <- dtot.cand
 
             count_accept[3] <- count_accept[3] + 1
           }
@@ -512,7 +512,7 @@ ordinal_khaos <-function(X, y,
             vars[i,tochange,1:nint[i,tochange]] <- vars.cand
             degs[i,tochange,1:nint[i,tochange]] <- degs.curr # no change
             nint[i,tochange] <- nint.curr                    # no change
-            dtot[i,tochange] <- dtot.cand                    # no change
+            dtot[i,tochange] <- dtot.curr                    # no change
 
             eta_vec <- eta.cand
 

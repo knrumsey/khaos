@@ -23,11 +23,11 @@
 #'
 #' @export
 sobol_khaos <- function(obj, plot_it = TRUE, samples=1000) {
-  if(class(obj) == "sparse_khaos"){
+  if (inherits(obj, "sparse_khaos")) {
     return(sobol_sparse_khaos(obj, samples, plot_it))
-  }else{
-    if(!(class(obj) %in% c("ordinal_khaos", "adaptive_khaos"))){
-      stop("obj must be an object of class sparse_khaos or adaptive_khaos.")
+  } else {
+    if (!inherits(obj, "ordinal_khaos") && !inherits(obj, "adaptive_khaos")) {
+      stop("obj must be an object of class sparse_khaos, adaptive_khaos, or ordinal_khaos.")
     }
   }
 
@@ -36,7 +36,7 @@ sobol_khaos <- function(obj, plot_it = TRUE, samples=1000) {
   degs <- obj$degs
   nint <- obj$nint
   X    <- obj$X
-  if(class(obj) == "ordinal_khaos"){
+  if (inherits(obj, "ordinal_khaos")) {
     s2 <- obj$s2z
   }else{
     s2 <- obj$s2
@@ -102,8 +102,10 @@ sobol_khaos <- function(obj, plot_it = TRUE, samples=1000) {
   # Construct full set of labels
   all_labels <- ls(all_labels_set)
   # Sort by interaction order, then alphabetically
-  label_order <- order(sapply(strsplit(all_labels, ":"), length), all_labels)
-  all_labels <- all_labels[label_order]
+  if (length(all_labels) > 0) {
+    label_order <- order(sapply(strsplit(all_labels, ":"), length), all_labels)
+    all_labels <- all_labels[label_order]
+  }
 
   # Construct full matrix for S
   S_mat <- matrix(0, nrow = n_iter, ncol = length(all_labels))
@@ -154,25 +156,15 @@ sobol_sparse_khaos <- function(obj, samples = 1000, plot_it = TRUE) {
   p <- ncol(X)
   n <- nrow(X)
 
-  # Generate basis matrix phi [n x nbasis]
-  phi <- matrix(NA, nrow = n, ncol = nbasis)
-  for (i in 1:nbasis) {
-    curr <- rep(1, n)
-    for (j in 1:p) {
-      curr <- curr * ss_legendre_poly(X[, j], vars[i, j])
-    }
-    phi[, i] <- curr
-  }
-
   # Setup for sampling from posterior over coefficients
   v0 <- prior[2]
   ntrain <- length(y)
-  shape <- (ntrain + v0 - p) / 2
+  shape <- (ntrain + v0 - nbasis) / 2
   coeff_samples <- matrix(NA, nrow = samples, ncol = nbasis)
   sigma2_samples <- numeric(samples)
 
   for (i in 1:samples) {
-    sigma2 <- 1 / stats::rgamma(1, shape, s2 * shape)
+    sigma2 <- 1 / stats::rgamma(1, shape, rate=s2 * shape)
     sigma2_samples[i] <- sigma2
     cov_mat <- sigma2 * (G * BtBi)
     coeff_samples[i, ] <- stats::rnorm(nbasis, mean = beta_hat, sd = sqrt(diag(cov_mat)))
@@ -226,8 +218,10 @@ sobol_sparse_khaos <- function(obj, samples = 1000, plot_it = TRUE) {
   }
 
   all_labels <- ls(all_labels_set)
-  label_order <- order(sapply(strsplit(all_labels, ":"), length), all_labels)
-  all_labels <- all_labels[label_order]
+  if (length(all_labels) > 0) {
+    label_order <- order(sapply(strsplit(all_labels, ":"), length), all_labels)
+    all_labels <- all_labels[label_order]
+  }
 
   S_mat <- matrix(0, nrow = samples, ncol = length(all_labels))
   colnames(S_mat) <- all_labels

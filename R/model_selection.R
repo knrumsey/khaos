@@ -36,7 +36,6 @@ log_evidence <- function(mode = c("fast","full"),
                          BtB = NULL, BtBi = NULL, Bty = NULL,  # full needs these
                          g_diag, g0_sq,
                          nu0, s0_sq, n){
-  #browser()
   mode <- match.arg(mode)
   if (mode == "fast") {
     l_ev <- log_evidence_fast_core(yty, v, g_diag, g0_sq,
@@ -47,7 +46,7 @@ log_evidence <- function(mode = c("fast","full"),
                            nu0, s0_sq, yty, n)
   }
   if(is.na(l_ev)){
-    browser()
+    return(-Inf)
   }
   return(l_ev)
 }
