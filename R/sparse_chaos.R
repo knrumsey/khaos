@@ -1,31 +1,100 @@
 #' Bayesian Sparse Polynomial Chaos Expansion
 #'
-#' The emulation approach of Shao et al. (2017), with some minor modifications (see README for details).
+#' A Bayesian sparse polynomial chaos expansion (PCE) method based on the
+#' forward-selection framework of Shao et al. (2017), with optional enrichment
+#' strategies that allow the candidate basis set to adapt across degree/order
+#' expansions (Rumsey et al. 2026).
 #'
-#' @param X A dataframe or matrix of predictors scaled to be between 0 and 1
-#' @param y a reponse vector
-#' @param degree Maximum polynomial degree parameters. c(Initial, Increment, Maximum)
-#' @param order Maximum order of interaction parameters. c(Initial, Increment, Maximum)
-#' @param prior A vector with prior values: n0 (strength of prior for coefficients), v0 (degrees of freedom for IG prior for sigma2), s0 (scale for IG prior for sigma2).
-#' @param lambda A parameter fed to the KIC calculations. Larger values will lead to sparser models.
-#' @param rho Basis functions are only kept if their square partial correlation coefficient is bigger than rho.
-#' @param regularize Logical. Should LASSO be used to pre-sparsify the library of basis functions?
-#' @param max_basis The maximum number of candidate basis functions to consider (bounds the computation time)
-#' @param verbose Logical. Should progress information be printed?
-#' @details Implements a modified version of the Bayesian sparse PCE method described by Shao et al. (2017).
-#' Degree (equivalently for order) is incremented by \code{degree[2]} if the current model contains any terms of maximal degree, and the process is started again from the top. Cannot be incremented above \code{degree[3]}.
-#' Fitting process terminates when either (i) max_basis is exceeded or (ii) current model fit does not contain any terms with degree and order not equal to the current maximum value.
-#' @references Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
+#' @param X A data frame or matrix of predictors scaled to lie between 0 and 1.
+#' @param y A numeric response vector of length \code{nrow(X)}.
+#' @param degree Integer vector of length 3 giving the polynomial degree schedule:
+#'   \code{c(d_init, d_increment, d_max)}.
+#' @param order Integer vector of length 3 giving the interaction-order schedule:
+#'   \code{c(q_init, q_increment, q_max)}.
+#' @param prior Numeric vector of prior hyperparameters
+#'   \code{c(n0, v0, s0)}, where \code{n0} controls shrinkage of the regression
+#'   coefficients, \code{v0} is the degrees-of-freedom parameter for the inverse-gamma
+#'   prior on \eqn{\sigma^2}, and \code{s0} is the scale parameter for that prior.
+#' @param lambda Nonnegative penalty parameter used in the KIC calculation. Larger
+#'   values favor sparser models.
+#' @param rho Basis functions are discarded after partial-correlation screening if
+#'   their squared partial correlation is smaller than \code{rho}.
+#' @param regularize Logical; if \code{TRUE}, a weighted LASSO pre-screen is used
+#'   to reduce the candidate basis set before partial-correlation ranking.
+#' @param max_basis Maximum number of candidate basis functions allowed in any
+#'   fitting round. This acts as a hard cap on computational cost.
+#' @param enrichment Integer in \code{0:4} specifying the enrichment strategy used
+#'   after the initial fitting round. See Details.
+#' @param verbose Logical; if \code{TRUE}, progress messages are printed.
+#'
+#' @details
+#' The fitting procedure follows the sparse Bayesian PCE approach of
+#' Shao et al. (2017). For a fixed maximum degree and interaction order,
+#' a candidate library of polynomial basis functions is constructed and ranked
+#' using marginal correlations and sequential partial correlations. Nested models
+#' are then evaluated using the Kashyap information criterion (KIC), and the best
+#' model is retained.
+#'
+#' If the selected model contains a basis function at the current maximum degree
+#' or interaction order, the candidate set is enriched by increasing the degree
+#' and/or order and repeating the fitting process. This continues until no further
+#' enrichment is warranted, the maximum degree/order is reached, or the candidate
+#' set exceeds \code{max_basis}.
+#'
+#' The \code{enrichment} argument controls how the candidate basis set is generated
+#' after the first fitting round:
+#' \describe{
+#'   \item{\code{0} (local enrichment)}{
+#'     Starts from the previously selected basis functions and applies local
+#'     modifications to each term. These include deletion, simplification,
+#'     complication, and promotion moves. This is typically the fastest strategy,
+#'     but it is also the most local.}
+#'   \item{\code{1} (Shao-style active rebuild)}{
+#'     Rebuilds the full candidate library using only variables that were active
+#'     in the previously selected model. This matches the common speedup used in
+#'     the original Shao-style approach, but inactive variables cannot re-enter
+#'     once dropped.}
+#'   \item{\code{2} (full active + sparse inactive enrichment)}{
+#'     Rebuilds the full candidate library on the currently active variables, then
+#'     enriches around the previously selected basis functions by allowing inactive
+#'     variables to re-enter through complication and promotion moves. This is a
+#'     compromise between speed and flexibility.}
+#'   \item{\code{3} (full active + inactive enrichment)}{
+#'     Rebuilds the full candidate library on the currently active variables, then
+#'     enriches that larger active-variable library by allowing inactive variables
+#'     to re-enter through complication and promotion moves. This is more expansive
+#'     than \code{enrichment = 2}, but can be substantially more expensive.}
+#'   \item{\code{4} (full rebuild)}{
+#'     Rebuilds the full candidate library over all variables at each enrichment
+#'     step. This is the most exhaustive strategy and matches the behavior of the
+#'     original implementation without enrichment shortcuts.}
+#' }
+#'
+#' Strategies \code{2} and \code{3} are designed to address a limitation of the
+#' Shao-style active-variable rebuild: variables that are inactive in one round
+#' are allowed to re-enter the model in later rounds.
+#'
+#' @references
+#' Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017).
+#' Bayesian sparse polynomial chaos expansion for global sensitivity analysis.
+#'
+#' Rumsey, K.N., Francom, D., Gibson, G., Derek Tucker, J. and Huerta, G., 2026. Bayesian Adaptive Polynomial Chaos Expansions. Stat, 15(1), p.e70151.
+#' \emph{Computer Methods in Applied Mechanics and Engineering}, \strong{318},
+#' 474--496.
+#'
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
-#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+#' f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
-#' fit <- sparse_khaos(X, y)
+#'
+#' fit <- sparse_khaos(X, y, enrichment = 2)
+#'
 #' @export
 sparse_khaos <- function(X, y,
                         degree=c(2,2,16), order=c(1,1,4),
                         prior=c(1, 1, 1), lambda=1, rho=0, regularize=TRUE,
                         max_basis=3e5,
+                        enrichment=2,
                         verbose=TRUE){
   if(max(X) > 1 || min(X) < 0){
     warning("X matrix should have values between 0 and 1.\n")
@@ -55,52 +124,105 @@ sparse_khaos <- function(X, y,
   sig_y <- stats::sd(y)
   y <- (y - mu_y)/sig_y
 
-  res <- sparse_khaos_wrapper(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose)
+  A_curr <- NULL
+  res <- sparse_khaos_wrapper(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, A_curr)
   return(res)
 }
 
-sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose){
+sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, A_curr){
   # Create a list of p sequences from 1 to n
   if(verbose){
     cat("Starting model with max degree = ", d_curr, " and max order = ", o_curr, "\n", sep="")
   }
-  A_num <- A_size(p, d_curr, o_curr)
-  if(verbose) cat("\tFound ", A_num, " possible basis functions.\n", sep="")
-  if(A_num > max_basis){
-    stop("Too many basis functions. Increase max_basis or decrease initial degree/order. Consider dimension reduction approaches?")
-  }
-  if(verbose){
-    if(A_num > 1000){
-      t_est <- 4.258369e-7 * A_num ^ 1.781556
-      if(t_est > 60){
-        cat("\tComputing initial phi matrix (~", round(t_est/60, 2), " minutes)\n",sep="")
+  # A_num <- A_size(p, d_curr, o_curr)
+  # if(verbose) cat("\tFound ", A_num, " possible basis functions.\n", sep="")
+  # if(A_num > max_basis){
+  #   stop("Too many basis functions. Increase max_basis or decrease initial degree/order. Consider dimension reduction approaches?")
+  # }
+  # if(verbose){
+  #   if(A_num > 1000){
+  #     t_est <- 4.258369e-7 * A_num ^ 1.781556
+  #     if(t_est > 60){
+  #       cat("\tComputing initial phi matrix (~", round(t_est/60, 2), " minutes)\n",sep="")
+  #     }else{
+  #       cat("\tComputing initial phi matrix (~", round(t_est, 2), " seconds)\n",sep="")
+  #     }
+  #   }else{
+  #     cat("\tComputing initial phi matrix\n")
+  #   }
+  # }
+  # A_set <- generate_A(p, d_curr, o_curr)
+  # A_deg <- apply(A_set, 1, sum)
+  # A_ord <- apply(A_set, 1, function(aa) sum(aa > 0))
+  # N_alpha <- nrow(A_set)
+  # if(N_alpha != A_num) warning("This warning shouldn't happen, but it's also not that big of a deal. (:\n")
+  # phi <- matrix(NA, nrow=n, ncol=N_alpha)
+  # rr <- rep(NA, N_alpha)
+  # for(i in 1:N_alpha){
+  #   curr <- rep(1, n)
+  #   for(j in 1:p){
+  #     curr <- curr * ss_legendre_poly(X[,j], A_set[i,j])
+  #   }
+  #   phi[,i] <- curr
+  #   rr[i] <- stats::cor(curr, y)
+  # }
+  # ord <- rev(order(rr^2))
+  # A_set <- A_set[ord,,drop=FALSE]
+  # A_deg <- A_deg[ord]
+  # A_ord <- A_ord[ord]
+  # phi <- phi[,ord]
+  # rr <- rr[ord]
+  if(is.null(A_curr)){
+    A_num <- A_size(p, d_curr, o_curr)
+    if(verbose) cat("\tFound ", A_num, " possible basis functions.\n", sep="")
+    if(A_num > max_basis){
+      stop("Too many basis functions. Increase max_basis or decrease initial degree/order. Consider dimension reduction approaches?")
+    }
+    if(verbose){
+      if(A_num > 1000){
+        t_est <- 4.258369e-7 * A_num ^ 1.781556
+        if(t_est > 60){
+          cat("\tComputing initial phi matrix (~", round(t_est/60, 2), " minutes)\n", sep = "")
+        }else{
+          cat("\tComputing initial phi matrix (~", round(t_est, 2), " seconds)\n", sep = "")
+        }
       }else{
-        cat("\tComputing initial phi matrix (~", round(t_est, 2), " seconds)\n",sep="")
+        cat("\tComputing initial phi matrix\n")
       }
-    }else{
-      cat("\tComputing initial phi matrix\n")
+    }
+    A_set <- generate_A(p, d_curr, o_curr)
+  }else{
+    if(verbose){
+      cat("\tBuilding enriched candidate set using strategy ", enrichment, "\n", sep = "")
+    }
+    A_set <- build_candidate_set(p, d_curr, o_curr, A_curr, enrichment, max_basis)
+    A_num <- nrow(A_set)
+    if(verbose) cat("\tFound ", A_num, " candidate basis functions after enrichment.\n", sep = "")
+    if(A_num > max_basis){
+      stop("Too many basis functions after enrichment. Increase max_basis or use a more restrictive enrichment strategy.")
     }
   }
-  A_set <- generate_A(p, d_curr, o_curr)
-  A_deg <- apply(A_set, 1, sum)
-  A_ord <- apply(A_set, 1, function(aa) sum(aa > 0))
+
+  A_deg <- rowSums(A_set)
+  A_ord <- rowSums(A_set > 0)
   N_alpha <- nrow(A_set)
-  if(N_alpha != A_num) warning("This warning shouldn't happen, but it's also not that big of a deal. (:\n")
-  phi <- matrix(NA, nrow=n, ncol=N_alpha)
+
+  phi <- matrix(NA, nrow = n, ncol = N_alpha)
   rr <- rep(NA, N_alpha)
   for(i in 1:N_alpha){
     curr <- rep(1, n)
     for(j in 1:p){
-      curr <- curr * ss_legendre_poly(X[,j], A_set[i,j])
+      curr <- curr * ss_legendre_poly(X[,j], A_set[i, j])
     }
-    phi[,i] <- curr
+    phi[, i] <- curr
     rr[i] <- stats::cor(curr, y)
   }
+
   ord <- rev(order(rr^2))
-  A_set <- A_set[ord,,drop=FALSE]
+  A_set <- A_set[ord, , drop = FALSE]
   A_deg <- A_deg[ord]
   A_ord <- A_ord[ord]
-  phi <- phi[,ord]
+  phi <- phi[, ord, drop = FALSE]
   rr <- rr[ord]
 
   # Do LASSO?
@@ -108,15 +230,15 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     if(verbose) cat("\tRunning weighted LASSO...", sep="")
     lfit <- glmnet::glmnet(phi, y, penalty.factor=1-rr^2, dfmax=n-2)
     count_nonzero <- apply(lfit$beta, 2, function(bb) sum(bb != 0))
-    lambda_indx <- max(which(count_nonzero < n))
-    lambda_use <- lfit$lambda[lambda_indx]
+    valid_lambda <- which(count_nonzero < n)
+    lambda_indx <- if(length(valid_lambda)) max(valid_lambda) else length(count_nonzero)
     alpha_indx <- which(lfit$beta[,lambda_indx] != 0)
     if(length(alpha_indx) == 0) alpha_indx <- 1
     N_alpha <- length(alpha_indx)
     A_set <- A_set[alpha_indx,,drop=FALSE]
     A_deg <- A_deg[alpha_indx]
     A_ord <- A_ord[alpha_indx]
-    phi <- phi[,alpha_indx]
+    phi <- phi[,alpha_indx,drop=FALSE]
     rr <- rr[alpha_indx]
     if(verbose) cat(" Keeping ", N_alpha, " basis functions\n", sep="")
   }
@@ -232,20 +354,29 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
     }
   }
 
-  max_degree_curr     <- max(A_deg[1:(best$k-1)])
-  max_order_curr      <- max(A_ord[1:(best$k-1)])
+  if(best$k <= 1){
+    max_degree_curr <- 0
+    max_order_curr <- 0
+  } else {
+    max_degree_curr <- max(A_deg[1:(best$k-1)])
+    max_order_curr <- max(A_ord[1:(best$k-1)])
+  }
   at_capacity_degree  <- (max_degree_curr == d_curr) #Note, Shao et al. suggest a +1 on the LHS of ineq.
   at_capacity_order   <- (max_order_curr == o_curr)
   over_max_degree     <- (d_curr >= d_max)
   over_max_order      <- (o_curr >= o_max)
   found_final_model   <- (!at_capacity_degree | over_max_degree) & (!at_capacity_order | over_max_order) # Neither degree nor order is at capacity (unless they're at the max)
-  next_basis_too_big  <- (A_size(p, d_curr+d_inc, o_curr+o_inc) > max_basis)
   order_bigger_than_p <- (o_curr + o_inc > p) & (d_inc == 0)
   over_max_model      <- over_max_degree & over_max_order
-  if(found_final_model | next_basis_too_big | over_max_model | order_bigger_than_p){
+  #this line doesn't work with new enrichment strategies.
+  #next_basis_too_big  <- (A_size(p, d_curr+d_inc, o_curr+o_inc) > max_basis)
+  #if(found_final_model | next_basis_too_big | over_max_model | order_bigger_than_p){
+  if(found_final_model | over_max_model | order_bigger_than_p){
     #if(next_degree_too_big) cat("Note: max_degree was reached.\n")
-    if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
-    if(over_max_model) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
+    if(verbose){
+      #if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
+      if(over_max_model) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
+    }
     #obj <- list(coeff=best$coeff, s2=best$s2,
     #            phi=phi[,1:best$k,drop=FALSE],
     #            vars=A_set[1:best$k,,drop=FALSE],
@@ -277,7 +408,12 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
   }else{
     d_next <- min(d_curr + d_inc, d_max)
     o_next <- min(o_curr + o_inc, o_max)
-    res <- sparse_khaos_wrapper(X, y, n, p, d_next, d_inc, d_max, o_next, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose)
+    if(best$k > 1){
+      A_next <- A_set[2:best$k, , drop = FALSE]
+    } else {
+      A_next <- matrix(0, nrow = 0, ncol = p)
+    }
+    res <- sparse_khaos_wrapper(X, y, n, p, d_next, d_inc, d_max, o_next, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, A_next)
     return(res)
   }
   return(obj)

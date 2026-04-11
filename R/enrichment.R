@@ -1,4 +1,20 @@
+build_candidate_set <- function(p, d, q, A_curr, enrichment, max_basis){
+  if(is.null(A_curr) || nrow(A_curr) == 0){
+    return(generate_A(p, d, q))
+  }
 
+  # Check size for full enrichment
+  if(enrichment == 4){
+    A_num <- A_size(p, d, q)
+    if(A_num > max_basis){
+      stop("Too many basis functions for full rebuild. Increase max_basis or use a more restrictive enrichment strategy.")
+    }
+    return(generate_A(p, d, q))
+  }
+
+  enrich_fun <- get(paste0("enrichment_", enrichment), mode = "function")
+  enrich_fun(p, d, q, A_curr)
+}
 
 enrichment_0 <- function(p, d, q, A_curr){
   A_new <- list(rep(0, p)) # Initialize with intercept

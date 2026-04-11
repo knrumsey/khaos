@@ -14,44 +14,109 @@ sparse_khaos(
   rho = 0,
   regularize = TRUE,
   max_basis = 3e+05,
+  enrichment = 2,
   verbose = TRUE
 )
 }
 \arguments{
-\item{X}{A dataframe or matrix of predictors scaled to be between 0 and 1}
+\item{X}{A data frame or matrix of predictors scaled to lie between 0 and 1.}
 
-\item{y}{a reponse vector}
+\item{y}{A numeric response vector of length \code{nrow(X)}.}
 
-\item{degree}{Maximum polynomial degree parameters. c(Initial, Increment, Maximum)}
+\item{degree}{Integer vector of length 3 giving the polynomial degree schedule:
+\code{c(d_init, d_increment, d_max)}.}
 
-\item{order}{Maximum order of interaction parameters. c(Initial, Increment, Maximum)}
+\item{order}{Integer vector of length 3 giving the interaction-order schedule:
+\code{c(q_init, q_increment, q_max)}.}
 
-\item{prior}{A vector with prior values: n0 (strength of prior for coefficients), v0 (degrees of freedom for IG prior for sigma2), s0 (scale for IG prior for sigma2).}
+\item{prior}{Numeric vector of prior hyperparameters
+\code{c(n0, v0, s0)}, where \code{n0} controls shrinkage of the regression
+coefficients, \code{v0} is the degrees-of-freedom parameter for the inverse-gamma
+prior on \eqn{\sigma^2}, and \code{s0} is the scale parameter for that prior.}
 
-\item{lambda}{A parameter fed to the KIC calculations. Larger values will lead to sparser models.}
+\item{lambda}{Nonnegative penalty parameter used in the KIC calculation. Larger
+values favor sparser models.}
 
-\item{rho}{Basis functions are only kept if their square partial correlation coefficient is bigger than rho.}
+\item{rho}{Basis functions are discarded after partial-correlation screening if
+their squared partial correlation is smaller than \code{rho}.}
 
-\item{regularize}{Logical. Should LASSO be used to pre-sparsify the library of basis functions?}
+\item{regularize}{Logical; if \code{TRUE}, a weighted LASSO pre-screen is used
+to reduce the candidate basis set before partial-correlation ranking.}
 
-\item{max_basis}{The maximum number of candidate basis functions to consider (bounds the computation time)}
+\item{max_basis}{Maximum number of candidate basis functions allowed in any
+fitting round. This acts as a hard cap on computational cost.}
 
-\item{verbose}{Logical. Should progress information be printed?}
+\item{enrichment}{Integer in \code{0:4} specifying the enrichment strategy used
+after the initial fitting round. See Details.}
+
+\item{verbose}{Logical; if \code{TRUE}, progress messages are printed.}
 }
 \description{
-The emulation approach of Shao et al. (2017), with some minor modifications (see README for details).
+A Bayesian sparse polynomial chaos expansion (PCE) method based on the
+forward-selection framework of Shao et al. (2017), with optional enrichment
+strategies that allow the candidate basis set to adapt across degree/order
+expansions (Rumsey et al. 2026).
 }
 \details{
-Implements a modified version of the Bayesian sparse PCE method described by Shao et al. (2017).
-Degree (equivalently for order) is incremented by \code{degree[2]} if the current model contains any terms of maximal degree, and the process is started again from the top. Cannot be incremented above \code{degree[3]}.
-Fitting process terminates when either (i) max_basis is exceeded or (ii) current model fit does not contain any terms with degree and order not equal to the current maximum value.
+The fitting procedure follows the sparse Bayesian PCE approach of
+Shao et al. (2017). For a fixed maximum degree and interaction order,
+a candidate library of polynomial basis functions is constructed and ranked
+using marginal correlations and sequential partial correlations. Nested models
+are then evaluated using the Kashyap information criterion (KIC), and the best
+model is retained.
+
+If the selected model contains a basis function at the current maximum degree
+or interaction order, the candidate set is enriched by increasing the degree
+and/or order and repeating the fitting process. This continues until no further
+enrichment is warranted, the maximum degree/order is reached, or the candidate
+set exceeds \code{max_basis}.
+
+The \code{enrichment} argument controls how the candidate basis set is generated
+after the first fitting round:
+\describe{
+\item{\code{0} (local enrichment)}{
+Starts from the previously selected basis functions and applies local
+modifications to each term. These include deletion, simplification,
+complication, and promotion moves. This is typically the fastest strategy,
+but it is also the most local.}
+\item{\code{1} (Shao-style active rebuild)}{
+Rebuilds the full candidate library using only variables that were active
+in the previously selected model. This matches the common speedup used in
+the original Shao-style approach, but inactive variables cannot re-enter
+once dropped.}
+\item{\code{2} (full active + sparse inactive enrichment)}{
+Rebuilds the full candidate library on the currently active variables, then
+enriches around the previously selected basis functions by allowing inactive
+variables to re-enter through complication and promotion moves. This is a
+compromise between speed and flexibility.}
+\item{\code{3} (full active + inactive enrichment)}{
+Rebuilds the full candidate library on the currently active variables, then
+enriches that larger active-variable library by allowing inactive variables
+to re-enter through complication and promotion moves. This is more expansive
+than \code{enrichment = 2}, but can be substantially more expensive.}
+\item{\code{4} (full rebuild)}{
+Rebuilds the full candidate library over all variables at each enrichment
+step. This is the most exhaustive strategy and matches the behavior of the
+original implementation without enrichment shortcuts.}
+}
+
+Strategies \code{2} and \code{3} are designed to address a limitation of the
+Shao-style active-variable rebuild: variables that are inactive in one round
+are allowed to re-enter the model in later rounds.
 }
 \examples{
 X <- lhs::maximinLHS(100, 2)
-f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
+f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
 y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
-fit <- sparse_khaos(X, y)
+
+fit <- sparse_khaos(X, y, enrichment = 2)
+
 }
 \references{
-Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
+Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017).
+Bayesian sparse polynomial chaos expansion for global sensitivity analysis.
+
+Rumsey, K.N., Francom, D., Gibson, G., Derek Tucker, J. and Huerta, G., 2026. Bayesian Adaptive Polynomial Chaos Expansions. Stat, 15(1), p.e70151.
+\emph{Computer Methods in Applied Mechanics and Engineering}, \strong{318},
+474--496.
 }
