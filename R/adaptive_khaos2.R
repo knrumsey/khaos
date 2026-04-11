@@ -1,4 +1,91 @@
-#' Experimental g-prior: Bayesian Adaptive Polynomial Chaos Expansion
+#' Bayesian Adaptive Polynomial Chaos Expansion
+#'
+#' A wrapper for adaptive Bayesian polynomial chaos expansion models with
+#' different coefficient priors.
+#'
+#' @param X A data frame or matrix of predictors scaled to lie between 0 and 1.
+#' @param y A numeric response vector of length \code{nrow(X)}.
+#' @param prior_type Character string specifying the coefficient-prior formulation.
+#'   Currently one of \code{"ridge"} or \code{"gprior"}.
+#' @param nmcmc Number of MCMC iterations.
+#' @param nburn Number of initial MCMC iterations to discard.
+#' @param thin Keep every \code{thin}-th retained MCMC sample.
+#' @param legacy Logical. If \code{TRUE}, reproduces the historical storage behavior
+#'   of earlier implementations, which may retain stale values in unused portions of
+#'   the internal \code{vars} and \code{degs} arrays. If \code{FALSE}, these unused
+#'   entries are cleared more carefully.
+#' @param verbose Logical; if \code{TRUE}, progress messages are printed.
+#' @param ... Additional arguments passed to the prior-specific fitting routine.
+#'
+#' @details
+#' This function dispatches to one of the prior-specific adaptive KHAOS fitting
+#' routines:
+#' \describe{
+#'   \item{\code{prior_type = "ridge"}}{Calls \code{\link{adaptive_khaos_ridge}}.}
+#'   \item{\code{prior_type = "gprior"}}{Calls \code{\link{adaptive_khaos_gprior}}.}
+#' }
+#'
+#' The wrapper exposes only the most commonly used arguments. Additional
+#' prior-specific tuning parameters can be supplied through \code{...}; see
+#' \code{\link{adaptive_khaos_ridge}} and \code{\link{adaptive_khaos_gprior}}
+#' for full documentation.
+#'
+#' @return
+#' An object of class \code{"adaptive_khaos"}.
+#'
+#' @references
+#' Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing
+#' sensitivity analysis of Bayesian adaptive spline surfaces."
+#' \emph{Journal of Statistical Software} 94.LA-UR-20-23587 (2020).
+#'
+#' Rumsey, K.N., Francom, D., Gibson, G., Tucker, J. D., and Huerta, G. (2026).
+#' Bayesian Adaptive Polynomial Chaos Expansions. \emph{Stat}, 15(1), e70151.
+#'
+#' @examples
+#' X <- lhs::maximinLHS(100, 2)
+#' f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
+#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
+#'
+#' fit1 <- adaptive_khaos(X, y)
+#' fit2 <- adaptive_khaos(X, y, prior_type = "gprior")
+#'
+#' @export
+adaptive_khaos <- function(X, y,
+                           prior_type = "ridge",
+                           nmcmc = 10000,
+                           nburn = 9000,
+                           thin = 1,
+                           legacy = TRUE,
+                           verbose = TRUE,
+                           ...) {
+  prior_type <- match.arg(prior_type, c("ridge", "gprior"))
+
+  if (prior_type == "ridge") {
+    adaptive_khaos_ridge(
+      X = X,
+      y = y,
+      nmcmc = nmcmc,
+      nburn = nburn,
+      thin = thin,
+      legacy = legacy,
+      verbose = verbose,
+      ...
+    )
+  } else {
+    adaptive_khaos_gprior(
+      X = X,
+      y = y,
+      nmcmc = nmcmc,
+      nburn = nburn,
+      thin = thin,
+      legacy = legacy,
+      verbose = verbose,
+      ...
+    )
+  }
+}
+
+#' Modified g-prior: Bayesian Adaptive Polynomial Chaos Expansion
 #'
 #' The emulation approach of Francom et al. (2020) for BMARS, modified for polynomial chaos.
 #'
@@ -15,8 +102,8 @@
 #' @param g2_sample Character string specifying the method used to sample or update the prior scaling parameter \code{g0^2}.
 #' @param g2_init Initial calue of g2 (global precision for g-prior). Becomes the only value when \code{g2_sample = "fixed"}.
 #' @param s2_lower Lower bound on process variance (numerically useful for deterministic functions).
-#' @param a_sigma,b_sigma Shape/scale parameters for the IG prior on process variance (default is Jefffrey's prior)
-#' @param a_M,b_M Shape/scale parameters for the Gamma prior on expected number of basis functions.
+#' @param a_sigma,b_sigma Shape/rate parameters for the IG prior on process variance (default is Jefffrey's prior)
+#' @param a_M,b_M Shape/rate parameters for the Gamma prior on expected number of basis functions.
 #' @param move_probs A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.
 #' @param coin_pars A list of control parameters for coinflip proposal
 #' @param degree_penalty Increasing this value encourages lower order polynomial terms (0 is no penalization).
@@ -63,7 +150,7 @@
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- adaptive_khaos(X, y)
 #' @export
-adaptive_khaos2 <-function(X, y,
+adaptive_khaos_gprior <-function(X, y,
                           degree=15, order=5,
                           nmcmc=10000,
                           nburn=9000,
@@ -99,8 +186,19 @@ adaptive_khaos2 <-function(X, y,
     return(chol2inv(chol_A))
   }
 
-  if(max(X) > 1 | min(X) < 0) warning("Inputs are expected to be scaled on (0, 1). Is this intentional?")
-
+  # Make sure X is a matrix
+  if(!is.matrix(X)){
+    if(is.data.frame(X)){
+      X <- as.matrix(X)
+    }else if(is.numeric(X)){
+      X <- matrix(X, ncol = 1)
+    }else{
+      stop("X must be a matrix, data frame, or numeric vector.")
+    }
+  }
+  # Check inputs and assign globals
+  if(max(X) > 1 || min(X) < 0) warning("Inputs are expected to be scaled on (0, 1). Is this intentional?")
+  if(length(y) != nrow(X)) stop("length(y) must equal nrow(X)")
   n<-length(y)
   p<-ncol(X)
   ssy<-sum(y^2)
@@ -168,7 +266,7 @@ adaptive_khaos2 <-function(X, y,
   for(i in 2:nmcmc){
     ## Reversible jump step
     move.type<-sample(c('birth','death','change'),1,prob=move_probs)
-    if(nbasis[i-1]<=1)
+    if(nbasis[i-1]==0)
       move.type<-'birth'
     if(nbasis[i-1]==max_basis)
       move.type<-sample(c('death','change'),1,prob=move_probs[2:3])
@@ -611,7 +709,7 @@ adaptive_khaos2 <-function(X, y,
             vars[i,tochange,1:nint[i,tochange]] <- vars.cand
             degs[i,tochange,1:nint[i,tochange]] <- degs.curr # no change
             nint[i,tochange] <- nint.curr                    # no change
-            dtot[i,tochange] <- dtot.cand                    # no change
+            dtot[i,tochange] <- dtot.curr                    # no change
 
             eta_vec <- eta.cand
 
@@ -640,7 +738,7 @@ adaptive_khaos2 <-function(X, y,
     # Lambda and s2
     s2[i] <- max(s2_lower,
                  1/stats::rgamma(1, n/2+a_sigma, rate = b_sigma+.5*sum_sq[i]))
-    lam[i] <- stats::rgamma(1,a_M+nbasis[i],b_M+1)                                               # update lambda
+    lam[i] <- stats::rgamma(1, a_M+nbasis[i], rate = b_M+1)                                               # update lambda
 
     # Sample g2
     if(g2_sample == "f"){
@@ -713,8 +811,11 @@ adaptive_khaos2 <-function(X, y,
 
   # Trim down data structures
   mcmc_iter <- seq(nburn+1, nmcmc, by=thin)
-  basis_high <- 1:max(nbasis)
-  inter_high <- 1:max(nint, na.rm=TRUE)
+  max_basis_used <- max(nbasis, na.rm = TRUE)
+  basis_high <- if(max_basis_used > 0) 1:max_basis_used else integer(0)
+  max_inter_used <- max(nint, na.rm = TRUE)
+  inter_high <- if(is.finite(max_inter_used) && max_inter_used > 0) 1:max_inter_used else integer(0)
+
 
   vars <- vars[mcmc_iter, basis_high, inter_high, drop=FALSE]
   degs <- degs[mcmc_iter, basis_high, inter_high, drop=FALSE]
@@ -726,6 +827,7 @@ adaptive_khaos2 <-function(X, y,
   s2  <- s2[mcmc_iter]
   lam <- lam[mcmc_iter]
   g2  <- g2[mcmc_iter]
+  sum_sq <- sum_sq[mcmc_iter]
 
 
   out <- list(B=B.curr,
@@ -736,7 +838,15 @@ adaptive_khaos2 <-function(X, y,
               eta=eta_vec,
               count_accept=count_accept,
               count_propose=count_propose,
+              prior_type="gprior",
               X=X, y=y)
   class(out) <- "adaptive_khaos"
   return(out)
+}
+
+#' @export
+#' @rdname adaptive_khaos_gprior
+adaptive_khaos2 <- function(...) {
+  .Deprecated("adaptive_khaos_gprior")
+  adaptive_khaos_gprior(...)
 }

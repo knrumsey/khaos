@@ -12,8 +12,8 @@
 #' @param max_basis Maximum number of basis functions.
 #' @param tau2 Prior variance for coefficients
 #' @param s2_lower Lower bound on process variance (numerically useful for deterministic functions).
-#' @param g1,g2 Shape/scale parameters for the IG prior on process variance (default is Jefffrey's prior)
-#' @param h1,h2 Shape/scale parameters for the Gamma prior on expected number of basis functions.
+#' @param g1,g2 Shape/rate parameters for the IG prior on process variance (default is Jefffrey's prior)
+#' @param h1,h2 Shape/rate parameters for the Gamma prior on expected number of basis functions.
 #' @param move_probs A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.
 #' @param coin_pars A list of control parameters for coinflip proposal
 #' @param degree_penalty Increasing this value encourages lower order polynomial terms (0 is no penalization).
@@ -49,7 +49,7 @@
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #' fit <- adaptive_khaos(X, y)
 #' @export
-adaptive_khaos <-function(X, y,
+adaptive_khaos_ridge <-function(X, y,
                           degree=15, order=5,
                           nmcmc=10000,
                           nburn=9000,
@@ -75,7 +75,19 @@ adaptive_khaos <-function(X, y,
     solve(A)
   }
 
-  if(max(X) > 1 | min(X) < 0) warning("Inputs are expected to be scaled on (0, 1). Is this intentional?")
+  # Make sure X is a matrix
+  if(!is.matrix(X)){
+    if(is.data.frame(X)){
+      X <- as.matrix(X)
+    }else if(is.numeric(X)){
+      X <- matrix(X, ncol = 1)
+    }else{
+      stop("X must be a matrix, data frame, or numeric vector.")
+    }
+  }
+  # Check inputs and assign globals
+  if(max(X) > 1 || min(X) < 0) warning("Inputs are expected to be scaled on (0, 1). Is this intentional?")
+  if(length(y) != nrow(X)) stop("length(y) must equal nrow(X)")
   n<-length(y)
   p<-ncol(X)
   ssy<-sum(y^2)
@@ -127,7 +139,7 @@ adaptive_khaos <-function(X, y,
     ## Reversible jump step
 
     move.type<-sample(c('birth','death','change'),1,prob=move_probs)
-    if(nbasis[i-1]<=1)
+    if(nbasis[i-1]==0)
       move.type<-'birth'
     if(nbasis[i-1]==max_basis)
       move.type<-sample(c('death','change'),1,prob=move_probs[2:3])
@@ -148,7 +160,7 @@ adaptive_khaos <-function(X, y,
       # Delayed rejection component
       chi.cand <- 0
       delayed_reject_term <- 0
-      while(sum(chi.cand) == 0 | sum(chi.cand) > order){
+      while(sum(chi.cand) == 0 || sum(chi.cand) > order){
         chi.cand  <- stats::rbinom(p, 1, wts)
         vars.cand <- which(chi.cand == 1)
         res <- 0
@@ -487,7 +499,7 @@ adaptive_khaos <-function(X, y,
             vars[i,tochange,1:nint[i,tochange]] <- vars.cand
             degs[i,tochange,1:nint[i,tochange]] <- degs.curr # no change
             nint[i,tochange] <- nint.curr                    # no change
-            dtot[i,tochange] <- dtot.cand                    # no change
+            dtot[i,tochange] <- dtot.curr                    # no change
 
             eta_vec <- eta.cand
 
@@ -527,8 +539,10 @@ adaptive_khaos <-function(X, y,
 
   # Trim down data structures
   mcmc_iter <- seq(nburn+1, nmcmc, by=thin)
-  basis_high <- 1:max(nbasis)
-  inter_high <- 1:max(nint, na.rm=TRUE)
+  max_basis_used <- max(nbasis, na.rm = TRUE)
+  basis_high <- if(max_basis_used > 0) 1:max_basis_used else integer(0)
+  max_inter_used <- max(nint, na.rm = TRUE)
+  inter_high <- if(is.finite(max_inter_used) && max_inter_used > 0) 1:max_inter_used else integer(0)
 
   vars <- vars[mcmc_iter, basis_high, inter_high, drop=FALSE]
   degs <- degs[mcmc_iter, basis_high, inter_high, drop=FALSE]
@@ -539,6 +553,7 @@ adaptive_khaos <-function(X, y,
   nbasis <- nbasis[mcmc_iter]
   s2 <- s2[mcmc_iter]
   lam <- lam[mcmc_iter]
+  sum_sq <- sum_sq[mcmc_iter]
 
 
   out <- list(B=B.curr,
@@ -549,6 +564,7 @@ adaptive_khaos <-function(X, y,
               eta=eta_vec,
               count_accept=count_accept,
               count_propose=count_propose,
+              prior_type="ridge",
               X=X, y=y)
   class(out) <- "adaptive_khaos"
   return(out)
@@ -638,7 +654,13 @@ plot.adaptive_khaos <- function(x, ...){
   graphics::points(x$y, yhat, pch=16)
   graphics::abline(0,1,col='dodgerblue')
   rr <- x$y-yhat
-  graphics::hist(rr, breaks=ceiling(length(rr)^0.33*diff(range(rr))/(3.5*stats::sd(rr))), freq=F)
+  rr_sd <- stats::sd(rr)
+  if(!is.finite(rr_sd) || rr_sd <= 0){
+    num_breaks <- 10
+  } else {
+    num_breaks <- max(1, ceiling(length(rr)^0.33 * diff(range(rr)) / (3.5 * rr_sd)))
+  }
+  graphics::hist(rr, breaks=num_breaks, freq=F)
   x = seq(range(rr)[1], range(rr)[2], length.out=100)
   graphics::curve(stats::dnorm(x, mean(rr), stats::sd(rr)), add=TRUE, col='orange')
 
