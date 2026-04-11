@@ -450,7 +450,7 @@ predict.sparse_khaos <- function(object, newdata=NULL, samples=1000, nugget=FALS
   for(i in 1:N_alpha){
     curr <- rep(1, n)
     for(j in 1:p){
-      curr <- curr * khaos:::ss_legendre_poly(XX[,j], object$vars[i,j])
+      curr <- curr * ss_legendre_poly(XX[,j], object$vars[i,j])
     }
     phi[,i] <- curr
   }

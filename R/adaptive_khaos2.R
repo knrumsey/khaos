@@ -845,6 +845,7 @@ adaptive_khaos_gprior <-function(X, y,
 }
 
 #' @export
+#' @param ... additional arguments passed to \code{plot}
 #' @rdname adaptive_khaos_gprior
 adaptive_khaos2 <- function(...) {
   .Deprecated("adaptive_khaos_gprior")

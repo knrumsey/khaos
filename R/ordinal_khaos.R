@@ -12,7 +12,7 @@
 #' @param max_basis Maximum number of basis functions.
 #' @param tau2 Prior variance for coefficients
 #' @param sigma_thresh Prior variance for the threshold parameters.
-#' @param h1,h2 Shape/scale parameters for the Gamma prior on expected number of basis functions.
+#' @param h1,h2 Shape/rate parameters for the Gamma prior on expected number of basis functions.
 #' @param move_probs A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.
 #' @param coin_pars A list of control parameters for coinflip proposal
 #' @param degree_penalty Increasing this value encourages lower order polynomial terms (0 is no penalization).
@@ -39,10 +39,13 @@
 #'
 #' Nott, David J., Anthony YC Kuk, and Hiep Duc. "Efficient sampling schemes for Bayesian MARS models with many predictors." Statistics and Computing 15 (2005): 93-101.
 #' @examples
-#' X <- lhs::maximinLHS(100, 2)
-#' f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-#' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
-#' fit <- adaptive_khaos(X, y)
+#' \dontrun{
+#' set.seed(1)
+#' X <- matrix(runif(200), ncol = 1)
+#' y <- sample(1:4, 200, replace = TRUE)
+#' fit <- ordinal_khaos(X, y, nmcmc = 2000, nburn = 1000, thin = 2, verbose = FALSE)
+#' plot(fit)
+#' }
 #' @export
 ordinal_khaos <-function(X, y,
                           degree=15, order=5,
@@ -69,6 +72,19 @@ ordinal_khaos <-function(X, y,
   }
   is_odd <- function(n) (n %% 2) == 1
 
+  # Make sure X is a matrix
+  if(!is.matrix(X)){
+    if(is.data.frame(X)){
+      X <- as.matrix(X)
+    }else if(is.numeric(X)){
+      X <- matrix(X, ncol = 1)
+    }else{
+      stop("X must be a matrix, data frame, or numeric vector.")
+    }
+  }
+  # Check inputs and assign globals
+  if(max(X) > 1 || min(X) < 0) warning("Inputs are expected to be scaled on (0, 1). Is this intentional?")
+  if(length(y) != nrow(X)) stop("length(y) must equal nrow(X)")
   n<-length(y)
   p<-ncol(X)
   if(p < order){
@@ -86,6 +102,9 @@ ordinal_khaos <-function(X, y,
   if(!all(y %in% 1:K)){
     stop("y must have values 1, 2, ... K")
   }
+  if(length(unique(y)) != K){
+    stop("All K classes must be represented. Consider re-defining class levels.")
+  }
   thresh_curr <- mu_thresh <- 1:K - (K + is_odd(K)) / 2
   # Initialize z
   z <- thresh_curr[y] + rbeta(n, 5, 5) - 1
@@ -94,6 +113,7 @@ ordinal_khaos <-function(X, y,
 
   s2z <- rep(NA, nmcmc)
   s2z[1] <- var(z)
+  thresh_mat[1,] <- thresh_curr[1:(K-1)]
 
   #KR: generalized harmonic number
   J_probs <- coin_pars[[1]](1:order)
@@ -137,7 +157,7 @@ ordinal_khaos <-function(X, y,
     ## Reversible jump step
 
     move.type<-sample(c('birth','death','change'),1,prob=move_probs)
-    if(nbasis[i-1]<=1)
+    if(nbasis[i-1]==0)
       move.type<-'birth'
     if(nbasis[i-1]==max_basis)
       move.type<-sample(c('death','change'),1,prob=move_probs[2:3])
@@ -158,7 +178,7 @@ ordinal_khaos <-function(X, y,
       # Delayed rejection component
       chi.cand <- 0
       delayed_reject_term <- 0
-      while(sum(chi.cand) == 0 | sum(chi.cand) > order){
+      while(sum(chi.cand) == 0 || sum(chi.cand) > order){
         chi.cand  <- stats::rbinom(p, 1, wts)
         vars.cand <- which(chi.cand == 1)
         res <- 0
@@ -414,7 +434,7 @@ ordinal_khaos <-function(X, y,
             vars[i,tochange,1:nint[i-1,tochange]] <- vars.curr # no change
             degs[i,tochange,1:nint[i-1,tochange]] <- degs.cand
             nint[i,tochange] <- nint.curr                      # no change
-            dtot[i,tochange] <- dtot.cand
+            dtot[i,tochange] <- dtot.curr
 
             count_accept[3] <- count_accept[3] + 1
           }
@@ -549,8 +569,11 @@ ordinal_khaos <-function(X, y,
 
   # Trim down data structures
   mcmc_iter <- seq(nburn+1, nmcmc, by=thin)
-  basis_high <- 1:max(nbasis)
-  inter_high <- 1:max(nint, na.rm=TRUE)
+  max_basis_used <- max(nbasis, na.rm = TRUE)
+  basis_high <- if(max_basis_used > 0) 1:max_basis_used else integer(0)
+  max_inter_used <- max(nint, na.rm = TRUE)
+  inter_high <- if(is.finite(max_inter_used) && max_inter_used > 0) 1:max_inter_used else integer(0)
+
 
   vars <- vars[mcmc_iter, basis_high, inter_high, drop=FALSE]
   degs <- degs[mcmc_iter, basis_high, inter_high, drop=FALSE]
@@ -596,7 +619,7 @@ ordinal_khaos <-function(X, y,
 #'   \code{"prob"} returns category probabilities \eqn{P(Y=k \mid x)} for
 #'   \eqn{k=1,\dots,K}. \code{"class"} returns MAP classes. \code{"latent"} returns
 #'   the latent mean \eqn{f(x)} (i.e., \eqn{B(x)\beta}) for each draw.
-#' @param aggregate Logical; if \code{TRUE} (default), averages results across the
+#' @param aggregate Logical (default \code{FALSE}); if \code{TRUE}, averages results across the
 #'   selected MCMC draws (probabilities are averaged; classes are aggregated by
 #'   simple voting; latent means are averaged). If \code{FALSE}, returns per-draw
 #'   arrays.
@@ -661,7 +684,7 @@ predict.ordinal_khaos <- function(object, newdata = NULL,
                                   type = c("class","prob","latent"),
                                   aggregate = FALSE, ...) {
   type <- match.arg(type)
-  print(type)
+  #print(type)
   if (is.null(newdata)) newdata <- object$X
   K <- max(object$y)
   n <- nrow(newdata)
@@ -780,6 +803,7 @@ predict.ordinal_khaos <- function(object, newdata = NULL,
 #' posterior-average thresholds overlaid.
 #'
 #' @param x An object of class \code{ordinal_khaos}.
+#' @param ... additional arguments passed to \code{plot}
 #'
 #' @details
 #' Panel (2) uses \code{predict(x, type="class", aggregate=FALSE)} to compute
@@ -812,7 +836,7 @@ plot.ordinal_khaos <- function(x, ...){
   ## --- (1) Trace of nbasis ---
   plot(seq_along(x$nbasis), x$nbasis, type = "l", lwd = 1,
        xlab = "MCMC iteration", ylab = "Number of basis functions",
-       main = "Trace: nbasis")
+       main = "Trace: nbasis", ...)
 
   ## --- (2) Predicted class (uncertainty) vs actual class ---
   cls_draws <- predict(x, newdata = x$X, type = "class", aggregate = FALSE)

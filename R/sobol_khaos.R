@@ -159,7 +159,7 @@ sobol_sparse_khaos <- function(obj, samples = 1000, plot_it = TRUE) {
   for (i in 1:nbasis) {
     curr <- rep(1, n)
     for (j in 1:p) {
-      curr <- curr * khaos:::ss_legendre_poly(X[, j], vars[i, j])
+      curr <- curr * ss_legendre_poly(X[, j], vars[i, j])
     }
     phi[, i] <- curr
   }

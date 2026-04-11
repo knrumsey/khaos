@@ -44,7 +44,7 @@ ordinal_khaos(
 
 \item{sigma_thresh}{Prior variance for the threshold parameters.}
 
-\item{h1, h2}{Shape/scale parameters for the Gamma prior on expected number of basis functions.}
+\item{h1, h2}{Shape/rate parameters for the Gamma prior on expected number of basis functions.}
 
 \item{move_probs}{A 3-vector with probabilities for (i) birth, (ii) death, and (iii) mutation.}
 
@@ -77,10 +77,13 @@ A re-ordering of the degrees
 A single variable is swapped out with another one
 }
 \examples{
-X <- lhs::maximinLHS(100, 2)
-f <- function(x) 10.391*((x[1]-0.4)*(x[2]-0.6) + 0.36)
-y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
-fit <- adaptive_khaos(X, y)
+\dontrun{
+set.seed(1)
+X <- matrix(runif(200), ncol = 1)
+y <- sample(1:4, 200, replace = TRUE)
+fit <- ordinal_khaos(X, y, nmcmc = 2000, nburn = 1000, thin = 2, verbose = FALSE)
+plot(fit)
+}
 }
 \references{
 Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing sensitivity analysis of Bayesian adaptive spline surfaces." Journal of Statistical Software 94.LA-UR-20-23587 (2020).

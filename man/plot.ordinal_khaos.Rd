@@ -8,6 +8,8 @@
 }
 \arguments{
 \item{x}{An object of class \code{ordinal_khaos}.}
+
+\item{...}{additional arguments passed to \code{plot}}
 }
 \value{
 Invisibly returns \code{NULL}.

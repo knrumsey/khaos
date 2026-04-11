@@ -27,7 +27,7 @@ uses all stored draws (i.e., \code{seq_along(object$nbasis)}).}
 \eqn{k=1,\dots,K}. \code{"class"} returns MAP classes. \code{"latent"} returns
 the latent mean \eqn{f(x)} (i.e., \eqn{B(x)\beta}) for each draw.}
 
-\item{aggregate}{Logical; if \code{TRUE} (default), averages results across the
+\item{aggregate}{Logical (default \code{FALSE}); if \code{TRUE}, averages results across the
 selected MCMC draws (probabilities are averaged; classes are aggregated by
 simple voting; latent means are averaged). If \code{FALSE}, returns per-draw
 arrays.}
