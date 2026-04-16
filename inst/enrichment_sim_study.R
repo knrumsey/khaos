@@ -17,8 +17,8 @@ prd_list <- list(pred, pred, pred, pred, pred)
 
 library(duqling)
 res <- run_sim_study(fit_list, prd_list,
-                     fnames = get_paper_funcs(),
-                     n_train=c(500, 1000), NSR=0,
+                     fnames = get_paper_funcs()[1:59],
+                     n_train=c(500), NSR=0,
                      replications=10,
                      mc_cores=5)
 

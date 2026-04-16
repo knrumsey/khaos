@@ -1,5 +1,5 @@
 ---
-title: "khaos"
+title: "khaos: Bayesian Polynomial Chaos Expansions in R"
 output: github_document
 ---
 
@@ -7,7 +7,7 @@ output: github_document
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, warning=FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -25,84 +25,255 @@ knitr::include_graphics("inst/logos/KHAOS.png")
 To install this package, use
 
 ```{R, eval=F}
-# install.packages("devtools")
-devtools::install_github("knrumsey/khaos")
+# install.packages("remotes")
+remotes::install_github("knrumsey/khaos")
 ```
 
-The `README.Rmd` file can be knit locally for proper rendering of the equations. Will add a link here if I ever write a short paper for this.
 
-### Description
+## Overview
+The `khaos` package implements Bayesian polynomial chaos expansion (PCE) methods for surrogate modeling, uncertainty quantification, and global sensitivity analysis. The focus is on scalable Bayesian approaches that remain tractable in moderate-to-high dimensional settings through sparsity and adaptive model construction.
 
-The `khaos` R package provides two implementations of Bayesian polynomial chaos expansions. The methods are referred to as "sparse" and "adaptive" and can be accessed with the R commands
+PCEs approximate an unknown function $f$ using a linear combination of orthogonal polynomial basis functions
+$$f(x) \approx \sum_{\alpha \in \mathcal A} \beta_\alpha \psi_\alpha(x)$$
 
-```         
+where $\psi_\alpha(x)$ are multivariate orthogonal polynomials indexed by multi-indices $\alpha$, and $\mathcal{A}$ defines the admissible set of basis functions subject to constraints on total degree and interaction order.
+
+The package combines two complementary modeling strategies:
+
+1.  **Sparse Bayesian PCE** via forward selection and information (Shao et al. 2017)
+    criteria
+2.  **Adaptive Bayesian PCE** via reversible-jump MCMC (Rumsey et al. 2026)
+
+Main user-facing functions:
+
+``` r
 sparse_khaos()
-adapative_khaos()
+adaptive_khaos()
+adaptive_khaos_ridge()
+adaptive_khaos_gprior()
+ordinal_khaos()
+sobol_khaos()
 ```
 
-Sparse khaos is an efficient implementation of the Bayesian Sparse Polynomial Chaos Expansion method of Shao et al. (2017) and adaptive khaos refers to a modification of the RJMCMC algorithm described by Francom & Sanso (2020) originally for BMARS.
+
 
 ### Sparse Khaos
 
-The user provides a $n\times p$ matrix of covariates (scaled to the unit hypercube) `X` and a $n$-vector `y` of the scalar response. The user also provides an initial value for the maximum polynomial degree $d$ and the maximum order of interaction $q$. There are
+The user provides an $n \times p$ matrix of covariates `X` (scaled to the unit hypercube) and a response vector `y`. The model is constructed as a sparse polynomial chaos expansion
 
-$$|\mathcal A| =\sum_{i=1}^q\sum_{j=i+1}^d \binom{p}{i}\binom{j-1}{i-1} \equiv N_\alpha$$
+$$
+f(x) \approx \sum_{\alpha \in \mathcal{A}} a_\alpha \, \psi_\alpha(x),
+$$
 
-permissible basis functions to consider. The algorithm consists of the following steps:
+where $\psi_\alpha(x)$ are multivariate orthogonal polynomial basis functions indexed by multi-indices $\alpha$. The admissible basis set is determined by constraints on total degree $d$ and interaction order $q$, with size
 
-1.  Compute the sample correlation $r_j$ between each basis column $\phi_j$ and $y$. Reorder the basis functions so that $r_j^2 \geq r_={j+1}^2$.
+$$
+|\mathcal{A}| = \sum_{i=1}^q \sum_{j=i}^d \binom{p}{i} \binom{j-1}{i-1}.
+$$
 
-2.  Perform LASSO (using `glmnet::glmnet`) using the default settings. Take $\lambda$ to be the smallest value (least regularization) so that the number of selected basis columns $N_\alpha$ is less than or equal to the number of training samples $n$. *Note: This step is optional and can be turned off by setting `regularize = FALSE`. This step is not in Shao's original algorithm, but can be essential for fast computation when* $p$ is moderate or large.
+Rather than fitting the full model over $\mathcal{A}$, the algorithm performs structured model selection:
 
-3.  Compute the squared partial correlation coefficient (SPCC) $\rho^2_{j|1,\ldots, j-1}$ for each $j=1, \ldots, N_\alpha$. Reorder the basis functions again in descending order of SPCC. *Optional: (Not in Shao's original algorithm):* Throw away any basis functions with $\rho^2_{j|1,\ldots, j-1} < \rho_0$ (input `rho`).
+1. **Marginal screening**  
+   Compute the sample correlation $r_j$ between each basis column $\phi_j$ and $y$, and reorder basis functions so that $r_j^2 \ge r_{j+1}^2$.
 
-4.  Consider all BSPCE models with basis functions $\phi_1, \ldots, \phi_k$ for $k=1, \ldots N_\alpha$. Calculate the Kashyap information criterion (KIC) for each model (using a Laplace approximation for the posterior). The codes `lambda` input can be used alter the KIC, with larger values favoring models with fewer parameters.
+2. **Optional LASSO pre-screening**  
+   A weighted LASSO (`glmnet`) is used to reduce the candidate set. The regularization parameter is chosen so that the number of selected basis functions does not exceed the sample size $n$. This step can be disabled via `regularize = FALSE`.
 
-5.  If the model contains basis functions with degree equal to $d$ or $d-1$, run the algorithm again after setting $d \leftarrow d+2$ and $q \leftarrow q + 1$. To bound the computational complexity, the recursion is terminated and the model is returned whenever $d +2 >$ `max_degree`, or when $|A| >$ `max_basis`.
+3. **Sequential partial correlation ranking**  
+   Compute squared partial correlation coefficients
+   $$
+   \rho^2_{j \mid 1,\ldots,j-1}
+   $$
+   and reorder the basis accordingly. Basis functions with $\rho^2$ below a user-defined threshold (`rho`) may be discarded.
 
-### Changes to algorithm
+4. **Model evaluation via KIC**  
+   Nested models using $\{\phi_1,\ldots,\phi_k\}$ are evaluated using the Kashyap Information Criterion (KIC), yielding a sparse approximation.
 
-1.  We note that the MAP-finding procedure described in equation (40)-(44) in Shao et al., (2017) is unnecessary because the MAP's can be found without needing iteration.
+5. **Recursive enrichment**  
+   If the selected model lies on the boundary of the current degree or interaction order, the candidate set is expanded and the procedure is repeated.
 
-2.  We also question the definition of ${\bf C}_{aa}$ given right after equation (39). We suggest the following definition, $\sigma_\alpha^2 = \left(1 + q_\alpha(d_\alpha+q_\alpha-2) \right)^{-1}$ where $d_\alpha$ and $q_\alpha$ are the *degree* and *order* (respectively) implied by $\alpha$.
+---
 
-3.  We propose a conjugate g-prior based approach (Zellner, 1986) modified to account for ${\bf C}_{aa}$. The prior distributions become
+### Implementation Details and Extensions
 
-    $$
-    \begin{aligned}
-    {\bf a}|\sigma^2 &\sim N\left({\bf 0}, \frac{\sigma^2n}{n_0}{\bf C}_{aa}\left(\Phi^T\Phi\right)^{-1} \right)\\
-    \sigma^2 &\sim \text{Inv-Gamma}\left(\frac{v_0}{2}, \frac{s_0^2}{2} \right),
-    \end{aligned}
-    $$
+The implementation of sparse Bayesian PCE in `khaos` follows the general framework of Shao et al. (2017), with several modifications and extensions designed to improve computational efficiency, numerical stability, and modeling flexibility.
 
-    where $\Phi$ is the $n\times N_\alpha$ matrix of basis functions and $n_0, v_0, s_0$ are user-defined hyperparameters. In this setting, the posterior distribution becomes
+1. **Closed-form MAP estimation**
 
-    $$
-    \begin{aligned}{\bf a} \mid \sigma^2, {\bf y} &\sim N\left( G_1 \hat{\bf a} , \sigma^2 G_1\left(\Phi^\intercal \Phi\right)^{-1}\right) \\
-    \sigma^2 \mid \bf y &\sim \text{Inv}-\text{Gamma}\left(\frac{n+v_0-p}{2}, \frac{s_0^2 + s^2 + G_2\hat{\bf a}^\intercal \Phi^\intercal\Phi\hat{\bf a}}{2}, \right)\end{aligned}
-    $$
+   The MAP estimation procedure described in Shao et al. (2017) is implemented here in closed form, avoiding iterative optimization. This significantly reduces computational overhead in the model selection step.
 
-    where $\hat a = \left(\Phi^\intercal \Phi\right)^{-1}\Phi^\intercal {\bf y}$, $s^2 = ({\bf y} - \Phi \hat{\bf a})^\intercal ({\bf y} - \Phi \hat{\bf a})$, $G_1 = \left(\bf I + \frac{n_0}{n}{\bf C}_{aa}\right)^{-1}$ and $G_2 = \left(\bf I + \frac{n}{n_0}{\bf C}_{aa}\right).$ The MAP estimates used to evaluate KIC are now given by
+2. **Basis-dependent scaling**
 
-    $$
-    \begin{aligned}{\hat{\bf a}}_\text{map} &= G_1 \hat{\bf a}\\
-    \hat{\sigma}^2_\text{map} &= \frac{s_0^2 + s^2 + G_2\hat{\bf a}^\intercal \Phi^\intercal\Phi\hat{\bf a}}{n+2+v_0 -p}
-    \end{aligned}
-    $$
+   The scaling matrix $\mathbf{C}_{aa}$ is defined in terms of the degree and interaction order of each basis function. Specifically, for a basis indexed by $\alpha$, we use
 
-    4.  We note that a major advantage of using the g-prior is the connection to variable selection. Thus we may be able to avoid using KIC altogether. We leave this for future work.
+   $$
+   \sigma_\alpha^2 = \left(1 + q_\alpha (d_\alpha + q_\alpha - 2)\right)^{-1},
+   $$
+
+   where $d_\alpha$ and $q_\alpha$ denote the total degree and interaction order associated with $\alpha$. This provides a natural way to penalize more complex basis functions.
+
+3. **Pre-screening via LASSO**
+
+   An optional weighted LASSO step is included prior to partial correlation ranking. This is not part of the original Shao algorithm but is essential for scaling to moderate and high-dimensional problems.
+
+4. **New enrichment strategies**
+
+   The recursive basis expansion is extended through a set of enrichment strategies, including an adaptive scheme that avoids constructing candidate sets that are predicted to be too large. This provides a practical mechanism for controlling computational cost while preserving model flexibility.
+
+These modifications retain the core structure of the sparse Bayesian PCE framework while improving performance in realistic settings.
+
+### Enrichment Strategies
+
+After the first fitting round, the candidate basis set can be updated using one of several enrichment strategies:
+
+- **0 (local enrichment)**  
+  Expands the basis locally around selected terms using degree adjustments and variable substitutions. Fast but highly local.
+
+- **1 (active-variable rebuild / Shao et al. 2017)**  
+  Reconstructs the full candidate set using only variables active in the current model. Efficient, but inactive variables cannot re-enter. This is the enrichment scheme originally 
+described by Shao et al. 2017.
+
+- **2 (active rebuild + sparse inactive enrichment)**  
+  Allows limited re-entry of inactive variables through local modifications.
+
+- **3 (active rebuild + full inactive enrichment)**  
+  More aggressive reintroduction of inactive variables, at higher computational cost.
+
+- **4 (full rebuild)**  
+  Recomputes the full candidate set over all variables.
+
+- **"adaptive"**  
+  Dynamically selects among these strategies based on an upper bound on candidate set size. If a proposed expansion is predicted to exceed a user-defined threshold (`adaptive_ladder`), a more restrictive enrichment strategy is used instead.
+
+This adaptive mechanism avoids constructing excessively large candidate sets and improves scalability without sacrificing flexibility.
+
+---
+
+### Bayesian Model
+
+The implementation uses a conjugate prior structure of the form
+
+$$
+\begin{aligned}
+\mathbf{a} \mid \sigma^2 &\sim \mathcal{N}\left(0, \frac{\sigma^2 n}{n_0} \mathbf{C}_{aa} (\Phi^\top \Phi)^{-1} \right), \\
+\sigma^2 &\sim \text{Inv-Gamma}\left(\frac{v_0}{2}, \frac{s_0^2}{2} \right),
+\end{aligned}
+$$
+
+where $\mathbf{C}_{aa}$ incorporates basis-dependent scaling based on degree and interaction order. In particular, the diagonal elements are defined as
+
+$$
+\sigma_\alpha^2 = \left(1 + q_\alpha (d_\alpha + q_\alpha - 2)\right)^{-1},
+$$
+
+where $d_\alpha$ and $q_\alpha$ denote the degree and interaction order of basis function $\alpha$.
+
+Under this model, posterior quantities and MAP estimates can be computed in closed form, allowing efficient evaluation of KIC without iterative optimization.
 
 ### Adaptive Khaos
 
-Briefly, this algorithm works by building models of the form
+The adaptive approach constructs a polynomial chaos expansion directly via a stochastic search over model space using reversible-jump Markov chain Monte Carlo (RJMCMC).
+
+The model takes the form
 
 $$
-f(x) = \sum_{m=1}^M a_m \prod_{i=1}^p \psi_{d_{im}}(x_i)
+f(x) = \sum_{m=1}^M a_m \prod_{i=1}^p \psi_{d_{im}}(x_i),
 $$
 
-where $\psi_d(x)$ is the "shifted standardized Legendre polynomial" of degree $d$. These models are built adaptively from the ground up using a simplified RJMCMC algorithm with a (i) modification phase in which basis functions are added (birth step), removed (death step), or modified (mutation step) and (ii) Gibbs steps for all other model parameters.
+where each term corresponds to a multivariate polynomial basis function defined by a subset of variables and associated degrees. The functions $\psi_d(x)$ are shifted and standardized Legendre polynomials, ensuring orthogonality under the uniform input distribution.
 
-The proposal distribution is carefully constructed using what we call the "Coin flip proposal", which is a computational enhancement of the ideas described by Nott et al. (2005).
+Unlike the sparse approach, which selects from a fixed candidate library, the adaptive method builds the expansion incrementally. The number of basis functions $M$, their variable composition, and their polynomial degrees are all treated as unknown and learned from the data.
+
+---
+
+### RJMCMC Model Construction
+
+The model is constructed using a reversible-jump MCMC algorithm with three primary move types:
+
+- **Birth moves**: introduce a new basis function into the model  
+- **Death moves**: remove an existing basis function  
+- **Mutation moves**: modify an existing basis function, either by changing its degree structure or the variables involved  
+
+These moves allow the algorithm to explore models of varying dimension and complexity. Conditional on the current model structure, Gibbs steps are used to update regression coefficients and variance parameters.
+
+---
+
+### Coin-Flip Proposal Mechanism
+
+A key component of the algorithm is the proposal distribution used to generate candidate basis functions. This is implemented via a "coin-flip" mechanism, which extends ideas from Nott et al. (2005).
+
+Rather than selecting variables uniformly or deterministically, each variable is included independently with a probability that adapts based on past usage. This leads to:
+
+- efficient exploration of high-dimensional input spaces  
+- automatic preference for important variables  
+- improved mixing relative to standard proposals  
+
+The interaction order and total polynomial degree are then sampled conditionally, and the resulting degree is partitioned across selected variables.
+
+---
+
+### Prior Specifications
+
+Two prior formulations are implemented for the adaptive model.
+
+#### Ridge prior
+
+A Gaussian prior is placed on the coefficients:
+
+$$
+a_m \sim \mathcal{N}(0, \tau^2),
+$$
+
+leading to a relatively simple posterior structure. This formulation is computationally efficient and tends to produce stable fits, particularly for moderate sample sizes.
+
+---
+
+#### Modified g-prior
+
+A modified g-prior is used to induce coefficient shrinkage that depends on the structural complexity of each basis function.
+
+Let $\alpha_m$ denote the multi-index associated with basis function $m$, with total degree $d(\alpha_m)$ and interaction order $q(\alpha_m)$. Define
+
+$$
+g_m = \left( \frac{1}{1 + q(\alpha_m)\,[d(\alpha_m) + q(\alpha_m) - 2]} \right)^{\zeta/2},
+$$
+
+where $\zeta \ge 0$ controls the strength of the complexity penalty (with $\zeta = 0$ recovering the standard g-prior).
+
+The prior on the regression coefficients is then
+
+$$
+\boldsymbol{\beta} \mid \sigma^2, g_0^2 \sim 
+\mathcal{N}\left(0,\; \sigma^2 g_0^2 D(g)\,(\Phi^\top \Phi)^{-1} D(g)\right),
+$$
+
+where $D(g)$ is the diagonal matrix with entries $g_m$, and $g_0^2$ is a global scaling parameter with prior
+
+$$
+g_0^2 \sim \text{Inv-Gamma}(a_g, b_g).
+$$
+
+This formulation provides several advantages:
+
+- **complexity-aware shrinkage**: higher-degree and higher-order interaction terms are penalized more strongly  
+- **adaptivity**: shrinkage varies across basis functions rather than being uniform  
+- **model selection capability**: the prior supports marginal likelihood calculations via Laplace approximation  
+
+Posterior inference for $g_0^2$ is performed using a Metropolis–Hastings step with a Laplace approximation as the proposal distribution, providing efficient sampling in practice.
+
+This modified g-prior reduces to the classical Zellner–Siow formulation when $g_m \equiv 1$, and provides a principled extension tailored to polynomial chaos structure.
+
+---
+
+### Summary
+
+The adaptive approach provides a flexible alternative to sparse PCE by:
+
+- constructing the basis expansion dynamically  
+- learning both structure and coefficients simultaneously  
+- allowing variables to enter and leave the model throughout the search  
+
+This comes at increased computational cost relative to the sparse method, but can yield improved performance when the true functional form is complex or not well approximated by a fixed candidate basis.
 
 ### Copyright
 
@@ -112,10 +283,20 @@ Reference ID: #O4792
 
 ### References
 
-Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017). Bayesian sparse polynomial chaos expansion for global sensitivity analysis. Computer Methods in Applied Mechanics and Engineering, 318, 474-496.
 
-Zellner, A. (1986). On assessing prior distributions and Bayesian regression analysis with g-prior distributions. *Bayesian inference and decision techniques*.
+Rumsey, K. N., Francom, D., Gibson, G., Tucker, J. D., and Huerta, G.
+(2026). Bayesian adaptive polynomial chaos expansions. Stat, 15(1),
+e70151.
 
-Francom, Devin, and Bruno Sansó. "BASS: An R package for fitting and performing sensitivity analysis of Bayesian adaptive spline surfaces." *Journal of Statistical Software* 94.LA-UR-20-23587 (2020).
+Shao, Q., Younes, A., Fahs, M., and Mara, T. A. (2017). Bayesian sparse
+polynomial chaos expansion for global sensitivity analysis. Computer
+Methods in Applied Mechanics and Engineering, 318, 474–496.
 
-Nott, David J., Anthony YC Kuk, and Hiep Duc. "Efficient sampling schemes for Bayesian MARS models with many predictors." *Statistics and Computing* 15 (2005): 93-101.
+Francom, D., and Sanso, B. (2020). BASS: Bayesian adaptive spline
+surfaces. Journal of Statistical Software.
+
+Nott, D. J., Kuk, A. Y. C., and Duc, H. (2005). Efficient sampling
+schemes for Bayesian MARS models. Statistics and Computing.
+
+Zellner, A. (1986). On assessing prior distributions and Bayesian
+regression analysis with g-priors.

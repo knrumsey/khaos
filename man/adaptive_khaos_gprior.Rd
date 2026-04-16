@@ -75,7 +75,7 @@ which may retain invalid basis function structures across iterations. Defaults t
 
 \item{verbose}{Logical. Should progress information be printed?}
 
-\item{...}{additional arguments passed to \code{plot}}
+\item{...}{passes arguments to adaptive_khaos_gprior}
 }
 \description{
 The emulation approach of Francom et al. (2020) for BMARS, modified for polynomial chaos.

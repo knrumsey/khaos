@@ -8,13 +8,14 @@ sparse_khaos(
   X,
   y,
   degree = c(2, 2, 16),
-  order = c(1, 1, 4),
+  order = c(1, 1, 5),
   prior = c(1, 1, 1),
   lambda = 1,
   rho = 0,
   regularize = TRUE,
-  max_basis = 3e+05,
-  enrichment = 2,
+  max_basis = 1e+06,
+  enrichment = "adaptive",
+  adaptive_ladder = c(10000, 1e+05),
   verbose = TRUE
 )
 }
@@ -23,7 +24,7 @@ sparse_khaos(
 
 \item{y}{A numeric response vector of length \code{nrow(X)}.}
 
-\item{degree}{Integer vector of length 3 giving the polynomial degree schedule:
+\item{degree}{Integer vector of length 3 giving the polynomial-degree schedule:
 \code{c(d_init, d_increment, d_max)}.}
 
 \item{order}{Integer vector of length 3 giving the interaction-order schedule:
@@ -46,77 +47,97 @@ to reduce the candidate basis set before partial-correlation ranking.}
 \item{max_basis}{Maximum number of candidate basis functions allowed in any
 fitting round. This acts as a hard cap on computational cost.}
 
-\item{enrichment}{Integer in \code{0:4} specifying the enrichment strategy used
-after the initial fitting round. See Details.}
+\item{enrichment}{Either an integer in \code{0:4} specifying a fixed enrichment
+strategy, or the character string \code{"adaptive"}, which allows the strategy
+to become more restrictive when the next candidate set would otherwise be too
+large. See Details.}
+
+\item{adaptive_ladder}{Numeric vector of candidate-size thresholds used only when
+\code{enrichment = "adaptive"}. The ladder should have length between 1 and 4,
+be sorted in increasing order, and satisfy \code{max(adaptive_ladder) <= max_basis}.
+Internally, the ladder is used to determine when the algorithm should fall back
+to a more restrictive enrichment strategy before attempting the next recursion
+step.}
 
 \item{verbose}{Logical; if \code{TRUE}, progress messages are printed.}
 }
 \description{
 A Bayesian sparse polynomial chaos expansion (PCE) method based on the
 forward-selection framework of Shao et al. (2017), with optional enrichment
-strategies that allow the candidate basis set to adapt across degree/order
-expansions (Rumsey et al. 2026).
+strategies that adapt the candidate basis set across degree and interaction-order
+expansions.
 }
 \details{
-The fitting procedure follows the sparse Bayesian PCE approach of
-Shao et al. (2017). For a fixed maximum degree and interaction order,
-a candidate library of polynomial basis functions is constructed and ranked
-using marginal correlations and sequential partial correlations. Nested models
-are then evaluated using the Kashyap information criterion (KIC), and the best
-model is retained.
+For fixed maximum degree and interaction order, the method constructs a candidate
+library of polynomial basis functions, ranks them using marginal correlations and
+sequential partial correlations, and evaluates nested models using the Kashyap
+information criterion (KIC). The best-ranked model is retained at that stage.
 
-If the selected model contains a basis function at the current maximum degree
-or interaction order, the candidate set is enriched by increasing the degree
-and/or order and repeating the fitting process. This continues until no further
-enrichment is warranted, the maximum degree/order is reached, or the candidate
-set exceeds \code{max_basis}.
+If the selected model contains a basis function at the current maximum degree or
+interaction order, the algorithm attempts another fitting round with increased
+degree and/or interaction order. In later rounds, the candidate basis set can be
+rebuilt using one of several enrichment strategies rather than constructing the
+full basis library from scratch.
 
-The \code{enrichment} argument controls how the candidate basis set is generated
-after the first fitting round:
+The \code{enrichment} argument controls how the candidate set is generated after
+the first fitting round:
 \describe{
 \item{\code{0} (local enrichment)}{
 Starts from the previously selected basis functions and applies local
 modifications to each term. These include deletion, simplification,
 complication, and promotion moves. This is typically the fastest strategy,
 but it is also the most local.}
-\item{\code{1} (Shao-style active rebuild)}{
+\item{\code{1} (active-variable rebuild)}{
 Rebuilds the full candidate library using only variables that were active
-in the previously selected model. This matches the common speedup used in
-the original Shao-style approach, but inactive variables cannot re-enter
-once dropped.}
-\item{\code{2} (full active + sparse inactive enrichment)}{
-Rebuilds the full candidate library on the currently active variables, then
+in the previously selected model. This is computationally efficient, but
+inactive variables cannot re-enter once dropped.}
+\item{\code{2} (full active rebuild plus sparse inactive enrichment)}{
+Rebuilds the candidate library on the currently active variables, then
 enriches around the previously selected basis functions by allowing inactive
 variables to re-enter through complication and promotion moves. This is a
 compromise between speed and flexibility.}
-\item{\code{3} (full active + inactive enrichment)}{
-Rebuilds the full candidate library on the currently active variables, then
-enriches that larger active-variable library by allowing inactive variables
-to re-enter through complication and promotion moves. This is more expansive
-than \code{enrichment = 2}, but can be substantially more expensive.}
+\item{\code{3} (full active rebuild plus inactive enrichment)}{
+Rebuilds the candidate library on the active variables, then enriches that
+larger active-variable library by allowing inactive variables to re-enter
+through complication and promotion moves. This is more expansive than
+\code{enrichment = 2}, but can be substantially more expensive.}
 \item{\code{4} (full rebuild)}{
 Rebuilds the full candidate library over all variables at each enrichment
-step. This is the most exhaustive strategy and matches the behavior of the
-original implementation without enrichment shortcuts.}
+step. This is the most exhaustive strategy.}
+\item{\code{"adaptive"}}{
+Begins with a relatively expansive enrichment strategy and, before the next
+recursion step, uses an upper bound on the candidate-set size to decide
+whether a more restrictive strategy should be used instead. This recovers
+the computational benefit of avoiding construction of candidate sets that
+are known in advance to be too large.}
 }
 
-Strategies \code{2} and \code{3} are designed to address a limitation of the
-Shao-style active-variable rebuild: variables that are inactive in one round
-are allowed to re-enter the model in later rounds.
+When \code{enrichment = "adaptive"}, the function uses \code{adaptive_ladder}
+together with an upper bound on the next candidate-set size. If the current
+enrichment choice appears too expensive, the algorithm steps down to a more
+restrictive enrichment rule before proceeding. If even the most restrictive
+admissible next step is predicted to exceed the allowed budget, the current
+fitted model is returned.
+
+Strategies \code{2}, \code{3}, and \code{"adaptive"} are designed to address a
+limitation of active-variable-only rebuilds: variables that are inactive in one
+round are allowed to re-enter the model in later rounds.
 }
 \examples{
 X <- lhs::maximinLHS(100, 2)
 f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
 y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 
-fit <- sparse_khaos(X, y, enrichment = 2)
+fit <- sparse_khaos(X, y)
 
 }
 \references{
-Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017).
+Shao, Q., Younes, A., Fahs, M., and Mara, T. A. (2017).
 Bayesian sparse polynomial chaos expansion for global sensitivity analysis.
-
-Rumsey, K.N., Francom, D., Gibson, G., Derek Tucker, J. and Huerta, G., 2026. Bayesian Adaptive Polynomial Chaos Expansions. Stat, 15(1), p.e70151.
 \emph{Computer Methods in Applied Mechanics and Engineering}, \strong{318},
 474--496.
+
+Rumsey, K. N., Francom, D., Gibson, G., Tucker, J. D., and Huerta, G. (2026).
+Bayesian adaptive polynomial chaos expansions.
+\emph{Stat}, \strong{15}(1), e70151.
 }

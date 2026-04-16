@@ -2,12 +2,12 @@
 #'
 #' A Bayesian sparse polynomial chaos expansion (PCE) method based on the
 #' forward-selection framework of Shao et al. (2017), with optional enrichment
-#' strategies that allow the candidate basis set to adapt across degree/order
-#' expansions (Rumsey et al. 2026).
+#' strategies that adapt the candidate basis set across degree and interaction-order
+#' expansions.
 #'
 #' @param X A data frame or matrix of predictors scaled to lie between 0 and 1.
 #' @param y A numeric response vector of length \code{nrow(X)}.
-#' @param degree Integer vector of length 3 giving the polynomial degree schedule:
+#' @param degree Integer vector of length 3 giving the polynomial-degree schedule:
 #'   \code{c(d_init, d_increment, d_max)}.
 #' @param order Integer vector of length 3 giving the interaction-order schedule:
 #'   \code{c(q_init, q_increment, q_max)}.
@@ -23,78 +23,98 @@
 #'   to reduce the candidate basis set before partial-correlation ranking.
 #' @param max_basis Maximum number of candidate basis functions allowed in any
 #'   fitting round. This acts as a hard cap on computational cost.
-#' @param enrichment Integer in \code{0:4} specifying the enrichment strategy used
-#'   after the initial fitting round. See Details.
+#' @param enrichment Either an integer in \code{0:4} specifying a fixed enrichment
+#'   strategy, or the character string \code{"adaptive"}, which allows the strategy
+#'   to become more restrictive when the next candidate set would otherwise be too
+#'   large. See Details.
+#' @param adaptive_ladder Numeric vector of candidate-size thresholds used only when
+#'   \code{enrichment = "adaptive"}. The ladder should have length between 1 and 4,
+#'   be sorted in increasing order, and satisfy \code{max(adaptive_ladder) <= max_basis}.
+#'   Internally, the ladder is used to determine when the algorithm should fall back
+#'   to a more restrictive enrichment strategy before attempting the next recursion
+#'   step.
 #' @param verbose Logical; if \code{TRUE}, progress messages are printed.
 #'
 #' @details
-#' The fitting procedure follows the sparse Bayesian PCE approach of
-#' Shao et al. (2017). For a fixed maximum degree and interaction order,
-#' a candidate library of polynomial basis functions is constructed and ranked
-#' using marginal correlations and sequential partial correlations. Nested models
-#' are then evaluated using the Kashyap information criterion (KIC), and the best
-#' model is retained.
+#' For fixed maximum degree and interaction order, the method constructs a candidate
+#' library of polynomial basis functions, ranks them using marginal correlations and
+#' sequential partial correlations, and evaluates nested models using the Kashyap
+#' information criterion (KIC). The best-ranked model is retained at that stage.
 #'
-#' If the selected model contains a basis function at the current maximum degree
-#' or interaction order, the candidate set is enriched by increasing the degree
-#' and/or order and repeating the fitting process. This continues until no further
-#' enrichment is warranted, the maximum degree/order is reached, or the candidate
-#' set exceeds \code{max_basis}.
+#' If the selected model contains a basis function at the current maximum degree or
+#' interaction order, the algorithm attempts another fitting round with increased
+#' degree and/or interaction order. In later rounds, the candidate basis set can be
+#' rebuilt using one of several enrichment strategies rather than constructing the
+#' full basis library from scratch.
 #'
-#' The \code{enrichment} argument controls how the candidate basis set is generated
-#' after the first fitting round:
+#' The \code{enrichment} argument controls how the candidate set is generated after
+#' the first fitting round:
 #' \describe{
 #'   \item{\code{0} (local enrichment)}{
 #'     Starts from the previously selected basis functions and applies local
 #'     modifications to each term. These include deletion, simplification,
 #'     complication, and promotion moves. This is typically the fastest strategy,
 #'     but it is also the most local.}
-#'   \item{\code{1} (Shao-style active rebuild)}{
+#'   \item{\code{1} (active-variable rebuild)}{
 #'     Rebuilds the full candidate library using only variables that were active
-#'     in the previously selected model. This matches the common speedup used in
-#'     the original Shao-style approach, but inactive variables cannot re-enter
-#'     once dropped.}
-#'   \item{\code{2} (full active + sparse inactive enrichment)}{
-#'     Rebuilds the full candidate library on the currently active variables, then
+#'     in the previously selected model. This is computationally efficient, but
+#'     inactive variables cannot re-enter once dropped.}
+#'   \item{\code{2} (full active rebuild plus sparse inactive enrichment)}{
+#'     Rebuilds the candidate library on the currently active variables, then
 #'     enriches around the previously selected basis functions by allowing inactive
 #'     variables to re-enter through complication and promotion moves. This is a
 #'     compromise between speed and flexibility.}
-#'   \item{\code{3} (full active + inactive enrichment)}{
-#'     Rebuilds the full candidate library on the currently active variables, then
-#'     enriches that larger active-variable library by allowing inactive variables
-#'     to re-enter through complication and promotion moves. This is more expansive
-#'     than \code{enrichment = 2}, but can be substantially more expensive.}
+#'   \item{\code{3} (full active rebuild plus inactive enrichment)}{
+#'     Rebuilds the candidate library on the active variables, then enriches that
+#'     larger active-variable library by allowing inactive variables to re-enter
+#'     through complication and promotion moves. This is more expansive than
+#'     \code{enrichment = 2}, but can be substantially more expensive.}
 #'   \item{\code{4} (full rebuild)}{
 #'     Rebuilds the full candidate library over all variables at each enrichment
-#'     step. This is the most exhaustive strategy and matches the behavior of the
-#'     original implementation without enrichment shortcuts.}
+#'     step. This is the most exhaustive strategy.}
+#'   \item{\code{"adaptive"}}{
+#'     Begins with a relatively expansive enrichment strategy and, before the next
+#'     recursion step, uses an upper bound on the candidate-set size to decide
+#'     whether a more restrictive strategy should be used instead. This recovers
+#'     the computational benefit of avoiding construction of candidate sets that
+#'     are known in advance to be too large.}
 #' }
 #'
-#' Strategies \code{2} and \code{3} are designed to address a limitation of the
-#' Shao-style active-variable rebuild: variables that are inactive in one round
-#' are allowed to re-enter the model in later rounds.
+#' When \code{enrichment = "adaptive"}, the function uses \code{adaptive_ladder}
+#' together with an upper bound on the next candidate-set size. If the current
+#' enrichment choice appears too expensive, the algorithm steps down to a more
+#' restrictive enrichment rule before proceeding. If even the most restrictive
+#' admissible next step is predicted to exceed the allowed budget, the current
+#' fitted model is returned.
+#'
+#' Strategies \code{2}, \code{3}, and \code{"adaptive"} are designed to address a
+#' limitation of active-variable-only rebuilds: variables that are inactive in one
+#' round are allowed to re-enter the model in later rounds.
 #'
 #' @references
-#' Shao, Q., Younes, A., Fahs, M., & Mara, T. A. (2017).
+#' Shao, Q., Younes, A., Fahs, M., and Mara, T. A. (2017).
 #' Bayesian sparse polynomial chaos expansion for global sensitivity analysis.
-#'
-#' Rumsey, K.N., Francom, D., Gibson, G., Derek Tucker, J. and Huerta, G., 2026. Bayesian Adaptive Polynomial Chaos Expansions. Stat, 15(1), p.e70151.
 #' \emph{Computer Methods in Applied Mechanics and Engineering}, \strong{318},
 #' 474--496.
+#'
+#' Rumsey, K. N., Francom, D., Gibson, G., Tucker, J. D., and Huerta, G. (2026).
+#' Bayesian adaptive polynomial chaos expansions.
+#' \emph{Stat}, \strong{15}(1), e70151.
 #'
 #' @examples
 #' X <- lhs::maximinLHS(100, 2)
 #' f <- function(x) 10.391 * ((x[1] - 0.4) * (x[2] - 0.6) + 0.36)
 #' y <- apply(X, 1, f) + stats::rnorm(100, 0, 0.1)
 #'
-#' fit <- sparse_khaos(X, y, enrichment = 2)
+#' fit <- sparse_khaos(X, y)
 #'
 #' @export
 sparse_khaos <- function(X, y,
-                        degree=c(2,2,16), order=c(1,1,4),
+                        degree=c(2,2,16), order=c(1,1,5),
                         prior=c(1, 1, 1), lambda=1, rho=0, regularize=TRUE,
-                        max_basis=3e5,
-                        enrichment=2,
+                        max_basis=1e6,
+                        enrichment="adaptive",
+                        adaptive_ladder = c(1e4, 1e5),
                         verbose=TRUE){
   if(max(X) > 1 || min(X) < 0){
     warning("X matrix should have values between 0 and 1.\n")
@@ -106,6 +126,8 @@ sparse_khaos <- function(X, y,
       # Assuming it's a 1-d vector, try to coerce
       if(is.numeric(X)){
         X <- matrix(X, ncol=1)
+      }else{
+        stop("X should be a matrix, data.frame, or vector.")
       }
     }
   }
@@ -124,54 +146,34 @@ sparse_khaos <- function(X, y,
   sig_y <- stats::sd(y)
   y <- (y - mu_y)/sig_y
 
+  if(enrichment == "adaptive"){
+    # check ladder for validity
+    if(length(adaptive_ladder) > 4 || length(adaptive_ladder) < 1){
+      stop("adaptive_ladder has the wrong length, see documentation")
+    }
+    if(max(adaptive_ladder) > max_basis){
+      stop("adaptive_ladder cannot exceed max_basis, see documentation")
+    }
+    enrichment <- length(adaptive_ladder)
+    adaptive_ladder <- c(sort(adaptive_ladder), max_basis)
+  }else{
+    adaptive_ladder = NA
+  }
+  if(!(enrichment %in% 0:4)){
+    stop("enrichment must be in 0:4")
+  }
+
   A_curr <- NULL
-  res <- sparse_khaos_wrapper(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, A_curr)
+  res <- sparse_khaos_wrapper(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, adaptive_ladder, A_curr)
   return(res)
 }
 
-sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, A_curr){
+sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, adaptive_ladder, A_curr){
   # Create a list of p sequences from 1 to n
   if(verbose){
     cat("Starting model with max degree = ", d_curr, " and max order = ", o_curr, "\n", sep="")
   }
-  # A_num <- A_size(p, d_curr, o_curr)
-  # if(verbose) cat("\tFound ", A_num, " possible basis functions.\n", sep="")
-  # if(A_num > max_basis){
-  #   stop("Too many basis functions. Increase max_basis or decrease initial degree/order. Consider dimension reduction approaches?")
-  # }
-  # if(verbose){
-  #   if(A_num > 1000){
-  #     t_est <- 4.258369e-7 * A_num ^ 1.781556
-  #     if(t_est > 60){
-  #       cat("\tComputing initial phi matrix (~", round(t_est/60, 2), " minutes)\n",sep="")
-  #     }else{
-  #       cat("\tComputing initial phi matrix (~", round(t_est, 2), " seconds)\n",sep="")
-  #     }
-  #   }else{
-  #     cat("\tComputing initial phi matrix\n")
-  #   }
-  # }
-  # A_set <- generate_A(p, d_curr, o_curr)
-  # A_deg <- apply(A_set, 1, sum)
-  # A_ord <- apply(A_set, 1, function(aa) sum(aa > 0))
-  # N_alpha <- nrow(A_set)
-  # if(N_alpha != A_num) warning("This warning shouldn't happen, but it's also not that big of a deal. (:\n")
-  # phi <- matrix(NA, nrow=n, ncol=N_alpha)
-  # rr <- rep(NA, N_alpha)
-  # for(i in 1:N_alpha){
-  #   curr <- rep(1, n)
-  #   for(j in 1:p){
-  #     curr <- curr * ss_legendre_poly(X[,j], A_set[i,j])
-  #   }
-  #   phi[,i] <- curr
-  #   rr[i] <- stats::cor(curr, y)
-  # }
-  # ord <- rev(order(rr^2))
-  # A_set <- A_set[ord,,drop=FALSE]
-  # A_deg <- A_deg[ord]
-  # A_ord <- A_ord[ord]
-  # phi <- phi[,ord]
-  # rr <- rr[ord]
+
   if(is.null(A_curr)){
     A_num <- A_size(p, d_curr, o_curr)
     if(verbose) cat("\tFound ", A_num, " possible basis functions.\n", sep="")
@@ -368,22 +370,56 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
   found_final_model   <- (!at_capacity_degree | over_max_degree) & (!at_capacity_order | over_max_order) # Neither degree nor order is at capacity (unless they're at the max)
   order_bigger_than_p <- (o_curr + o_inc > p) & (d_inc == 0)
   over_max_model      <- over_max_degree & over_max_order
-  #this line doesn't work with new enrichment strategies.
-  #next_basis_too_big  <- (A_size(p, d_curr+d_inc, o_curr+o_inc) > max_basis)
-  #if(found_final_model | next_basis_too_big | over_max_model | order_bigger_than_p){
-  if(found_final_model | over_max_model | order_bigger_than_p){
-    #if(next_degree_too_big) cat("Note: max_degree was reached.\n")
+  # Check whether the next candidate set would be too large.
+  # For adaptive enrichment, try decreasing enrichment before giving up.
+  d_next <- min(d_curr + d_inc, d_max)
+  o_next <- min(o_curr + o_inc, o_max)
+
+  if(best$k > 1){
+    A_next <- A_set[2:best$k, , drop = FALSE]
+  } else {
+    A_next <- matrix(0, nrow = 0, ncol = p)
+  }
+
+  enrichment_next <- enrichment
+  next_basis_too_big <- FALSE
+
+  if(!all(is.na(adaptive_ladder))){
+    p_active <- sum(colSums(A_next) > 0)
+    A_next_num <- nrow(A_next)
+
+    A_num_ub <- A_size_ub(p, d_next, o_next, p_active, A_next_num, enrichment_next)
+
+    # adaptive_ladder has already had max_basis appended to the end
+    # Example: c(1e4, 1e5, max_basis)
+    # Then enrichment 2 -> 1e4, enrichment 1 -> 1e5, enrichment 0 -> max_basis
+    while(enrichment_next > 0 &&
+          A_num_ub > adaptive_ladder[length(adaptive_ladder) - enrichment_next]){
+      enrichment_next <- enrichment_next - 1
+      A_num_ub <- A_size_ub(p, d_next, o_next, p_active, A_next_num, enrichment_next)
+    }
+
+    if(A_num_ub > adaptive_ladder[length(adaptive_ladder) - enrichment_next]){
+      next_basis_too_big <- TRUE
+    }
+
+    if(verbose && enrichment_next < enrichment){
+      cat("\tAdaptive enrichment: reducing from ",
+          enrichment, " to ", enrichment_next,
+          " (new estimated size = ", format(A_num_ub, scientific = TRUE),
+          ")\n", sep = "")
+    }
+  } else {
+    p_active <- sum(colSums(A_next) > 0)
+    A_next_num <- nrow(A_next)
+    A_num_ub <- A_size_ub(p, d_next, o_next, p_active, A_next_num, enrichment_next)
+    next_basis_too_big <- (A_num_ub > max_basis)
+  }
+  if(found_final_model | over_max_model | order_bigger_than_p | next_basis_too_big){
     if(verbose){
-      #if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
+      if(next_basis_too_big) cat("Note: max_basis was reached. Consider dimension reduction?\n")
       if(over_max_model) cat("Note: Maximum degree and order were both reached. Consider increasing these values?\n")
     }
-    #obj <- list(coeff=best$coeff, s2=best$s2,
-    #            phi=phi[,1:best$k,drop=FALSE],
-    #            vars=A_set[1:best$k,,drop=FALSE],
-    #            mu_y=mu_y, sigma_y=sig_y, KIC=best$KIC, X=X, y=y*sig_y + mu_y,
-    #            BtB=best$BtB, BtBi=best$BtBi, prior=prior, G=best$G)
-
-
     obj <- list(B        = phi[, 1:best$k, drop = FALSE],
                 nbasis   = best$k,
                 vars     = A_set[1:best$k, , drop = FALSE],
@@ -406,14 +442,7 @@ sparse_khaos_wrapper <- function(X, y, n, p, d_curr, d_inc, d_max, o_curr, o_inc
 
     class(obj) <- "sparse_khaos"
   }else{
-    d_next <- min(d_curr + d_inc, d_max)
-    o_next <- min(o_curr + o_inc, o_max)
-    if(best$k > 1){
-      A_next <- A_set[2:best$k, , drop = FALSE]
-    } else {
-      A_next <- matrix(0, nrow = 0, ncol = p)
-    }
-    res <- sparse_khaos_wrapper(X, y, n, p, d_next, d_inc, d_max, o_next, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment, A_next)
+    res <- sparse_khaos_wrapper(X, y, n, p, d_next, d_inc, d_max, o_next, o_inc, o_max, mu_y, sig_y, max_basis, prior, lambda, rho, regularize, verbose, enrichment_next, adaptive_ladder, A_next)
     return(res)
   }
   return(obj)
@@ -539,7 +568,7 @@ print.sparse_khaos <- function(x, ...){
   bf_degrees <- table(rowSums(x$vars))
   names(bf_degrees) <- paste("deg", seq_along(bf_degrees), sep="")
 
-  bf_orders <- table(rowSums(x$vars))
+  bf_orders <- table(rowSums(x$vars > 0))
   names(bf_orders) <- paste("ord", seq_along(bf_orders), sep="")
 
   cat("Fitted model contains", x$nbasis, "basis functions\n\n")

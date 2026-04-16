@@ -116,6 +116,25 @@ A_size <- function(p, d, q){
   return(res)
 }
 
+A_size_ub <- function(p, d, q, p_active, A_size_curr, enrichment){
+  if(enrichment == 0){
+    return(A_size_curr * (4 * p + 1))
+  }
+  if(enrichment == 1){
+    return(A_size(p_active, d, q))
+  }
+  if(enrichment == 2){
+    return(A_size(p_active, d, q) + 2 * A_size_curr * (p - p_active))
+  }
+  if(enrichment == 3){
+    return(A_size(p_active, d, q) * (1 + 2 * (p - p_active)))
+  }
+  if(enrichment == 4){
+    return(A_size(p, d, q))
+  }
+  stop("enrichment number not recognized")
+}
+
 # HELPERS FOR ADAPTIVE VERSION
 
 make_weights <- function(eta, p0, epsilon, alpha, num_passes){
