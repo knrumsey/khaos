@@ -19,6 +19,5 @@ Suggests: knitr, rmarkdown, lhs, testthat (>= 2.1.0)
 License: BSD_3_clause + file LICENSE
 Encoding: UTF-8
 NeedsCompilation: no
-Author: Kellin Rumsey [aut, cre]
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2

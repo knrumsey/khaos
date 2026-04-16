@@ -39,7 +39,7 @@
 #'
 #' Nott, David J., Anthony YC Kuk, and Hiep Duc. "Efficient sampling schemes for Bayesian MARS models with many predictors." Statistics and Computing 15 (2005): 93-101.
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' set.seed(1)
 #' X <- matrix(runif(200), ncol = 1)
 #' y <- sample(1:4, 200, replace = TRUE)
