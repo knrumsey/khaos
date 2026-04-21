@@ -77,7 +77,7 @@ A re-ordering of the degrees
 A single variable is swapped out with another one
 }
 \examples{
-\dontrun{
+\donttest{
 set.seed(1)
 X <- matrix(runif(200), ncol = 1)
 y <- sample(1:4, 200, replace = TRUE)
