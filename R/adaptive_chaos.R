@@ -254,7 +254,7 @@ adaptive_khaos_ridge <-function(X, y,
 
     } else if(move.type=='death'){
       tokill<-sample(nbasis[i-1],1) # which basis function we will delete
-      B.cand<-B.curr[,-(tokill+1)]  # + 1 to skip the intercept
+      B.cand<-B.curr[,-(tokill+1),drop=FALSE]  # + 1 to skip the intercept
       BtB.cand <- crossprod(B.cand)
       # There really shouldn't be any issues here,
       # but for some reason we still need tryCatch
